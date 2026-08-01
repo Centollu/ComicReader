@@ -1,12 +1,13 @@
 package com.centollu.comicreader.data.model
 
-import io.realm.kotlin.types.RealmObject
-import io.realm.kotlin.types.annotations.PrimaryKey
-import org.mongodb.kbson.ObjectId
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import java.util.UUID
 
-class ComicDocument : RealmObject {
+@Entity(tableName = "comics")
+class ComicDocument {
     @PrimaryKey
-    var _id: ObjectId = ObjectId()
+    var _id: String = UUID.randomUUID().toString()
     var filePath: String = ""
     var title: String = ""
     var series: String = ""

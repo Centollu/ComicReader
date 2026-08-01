@@ -68,7 +68,7 @@ fun HistoryScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(uiState.historyItems, key = { it._id.toHexString() }) { history ->
+                    items(uiState.historyItems, key = { it._id }) { history ->
                         HistoryCard(
                             context = context,
                             history = history,

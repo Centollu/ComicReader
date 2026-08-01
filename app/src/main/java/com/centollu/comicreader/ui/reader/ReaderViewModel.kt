@@ -1,10 +1,11 @@
 package com.centollu.comicreader.ui.reader
 
+import android.app.Application
 import android.content.Context
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
-import com.centollu.comicreader.data.repository.MongoRepository
+import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.NfsManager
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +24,9 @@ data class ReaderUiState(
     val errorMessage: String? = null
 )
 
-class ReaderViewModel(private val repository: MongoRepository = MongoRepository()) : ViewModel() {
+class ReaderViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = ComicRepository(application.applicationContext)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -87,7 +90,7 @@ class ReaderViewModel(private val repository: MongoRepository = MongoRepository(
     private fun saveProgress(pageIndex: Int) {
         val comic = _uiState.value.comic ?: return
         val total = _uiState.value.pageFiles.size
-        val comicId = comic._id.toHexString()
+        val comicId = comic._id
 
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveReadingProgress(

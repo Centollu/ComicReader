@@ -146,14 +146,14 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredComics, key = { it._id.toHexString() }) { comic ->
+                    items(filteredComics, key = { it._id }) { comic ->
                         ComicGridItem(
                             context = context,
                             comic = comic,
                             onComicClick = { onComicSelected(comic) },
                             onChangeCoverClick = { viewModel.openCoverSelectionDialog(context, comic) },
                             onEditMetadataClick = { editingComicMetadata = comic },
-                            onDeleteClick = { viewModel.deleteComic(comic._id.toHexString()) }
+                            onDeleteClick = { viewModel.deleteComic(comic._id) }
                         )
                     }
                 }
@@ -216,7 +216,7 @@ fun LibraryScreen(
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.updateComicMetadata(
-                        comic._id.toHexString(),
+                        comic._id,
                         editTitle,
                         editSeries,
                         editAuthor,
@@ -259,7 +259,7 @@ fun ComicGridItem(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val coverFile = remember(comic.coverFilename, comic._id) {
-        ComicExtractor.getCoverThumbnailFile(context, comic._id.toHexString())
+        ComicExtractor.getCoverThumbnailFile(context, comic._id)
     }
 
     Card(

@@ -1,11 +1,12 @@
 package com.centollu.comicreader.ui.library
 
+import android.app.Application
 import android.content.Context
 import android.net.Uri
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
-import com.centollu.comicreader.data.repository.MongoRepository
+import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.ExtractedComicResult
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +28,9 @@ data class LibraryUiState(
     val isExtractingForCover: Boolean = false
 )
 
-class LibraryViewModel(private val repository: MongoRepository = MongoRepository()) : ViewModel() {
+class LibraryViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = ComicRepository(application.applicationContext)
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -95,7 +98,7 @@ class LibraryViewModel(private val repository: MongoRepository = MongoRepository
             // Escaneo rápido: extrae SOLO la portada y calcula el total de páginas
             val scanResult = ComicExtractor.extractOnlyCover(
                 context = context,
-                comicId = comicDoc._id.toHexString(),
+                            comicId = comicDoc._id,
                 inputStreamProvider = { FileInputStream(destFile) },
                 fileExtension = destFile.extension
             )
@@ -129,7 +132,7 @@ class LibraryViewModel(private val repository: MongoRepository = MongoRepository
                         // Escaneo ultrarrápido: extrae SOLO la portada en filesDir/covers/
                         val scanResult = ComicExtractor.extractOnlyCover(
                             context = context,
-                            comicId = comicDoc._id.toHexString(),
+                comicId = comicDoc._id,
                             inputStreamProvider = { FileInputStream(file) },
                             fileExtension = file.extension
                         )
@@ -153,7 +156,7 @@ class LibraryViewModel(private val repository: MongoRepository = MongoRepository
             )
 
             val file = File(comic.filePath)
-            val comicId = comic._id.toHexString()
+            val comicId = comic._id
 
             val result = ComicExtractor.extractComic(
                 context = context,
@@ -173,7 +176,7 @@ class LibraryViewModel(private val repository: MongoRepository = MongoRepository
     fun setSelectedCover(context: Context, selectedImageFile: File) {
         val comic = _uiState.value.selectedComicForCoverPicker ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val comicId = comic._id.toHexString()
+            val comicId = comic._id
             val newCoverName = selectedImageFile.name
 
             // Re-extract/generate thumbnail with the newly selected cover
