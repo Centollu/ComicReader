@@ -1,0 +1,128 @@
+package com.centollu.comicreader.ui.settings
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.centollu.comicreader.util.NfsManager
+import com.centollu.comicreader.util.NfsServerConfig
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen() {
+    val context = LocalContext.current
+    var nfsConfig by remember { mutableStateOf(NfsManager.getConfig(context)) }
+    var ipInput by remember { mutableStateOf(nfsConfig.serverIp) }
+    var pathInput by remember { mutableStateOf(nfsConfig.exportPath) }
+    var nfsEnabled by remember { mutableStateOf(nfsConfig.isEnabled) }
+    var showSavedMessage by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Ajustes y Red NFS", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Configuración de Servidor NFS (Red Local)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Habilitar carpetas en red NFS", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = nfsEnabled,
+                            onCheckedChange = { nfsEnabled = it }
+                        )
+                    }
+
+                    if (nfsEnabled) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = ipInput,
+                            onValueChange = { ipInput = it },
+                            label = { Text("Dirección IP del servidor/NAS") },
+                            placeholder = { Text("192.168.1.100") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = pathInput,
+                            onValueChange = { pathInput = it },
+                            label = { Text("Ruta del recurso compartido") },
+                            placeholder = { Text("/volume1/comics") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            val newConfig = NfsServerConfig(
+                                serverIp = ipInput.trim(),
+                                exportPath = pathInput.trim(),
+                                isEnabled = nfsEnabled
+                            )
+                            NfsManager.saveConfig(context, newConfig)
+                            showSavedMessage = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Guardar Configuración NFS")
+                    }
+
+                    if (showSavedMessage) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "¡Configuración guardada correctamente!",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Acerca de ComicReader", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Versión: 1.0.0", fontSize = 12.sp)
+                    Text("Motor BD: MongoDB Realm (Local)", fontSize = 12.sp)
+                    Text("Formatos soportados: .cbz (ZIP) y .cbr (RAR)", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">ComicReader</string>
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_history">Historial</string>
+    <string name="nav_settings">Ajustes</string>
+</resources>
