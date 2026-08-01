@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -27,10 +28,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.centollu.comicreader.data.model.ComicDocument
+import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ComicExtractor
 import java.io.File
 
@@ -43,6 +46,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val filteredComics = remember(uiState) { viewModel.getFilteredComics() }
+    val gridColumns = remember { AppPrefs.getGridColumns(context) }
 
     var showScanDialog by remember { mutableStateOf(false) }
     var editingComicMetadata by remember { mutableStateOf<ComicDocument?>(null) }
@@ -178,7 +182,7 @@ fun LibraryScreen(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 150.dp),
+                    columns = GridCells.Fixed(gridColumns),
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -212,6 +216,7 @@ fun LibraryScreen(
     // Dialog: Edit Metadata
     editingComicMetadata?.let { comic ->
         var editTitle by remember { mutableStateOf(comic.title) }
+        var editIssueNumber by remember { mutableStateOf(comic.issueNumber?.toString() ?: "") }
         var editSeries by remember { mutableStateOf(comic.series) }
         var editAuthor by remember { mutableStateOf(comic.authors) }
         var editPublisher by remember { mutableStateOf(comic.publisher) }
@@ -223,6 +228,12 @@ fun LibraryScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Título") })
+                    OutlinedTextField(
+                        value = editIssueNumber,
+                        onValueChange = { editIssueNumber = it },
+                        label = { Text("Número (opcional)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                     OutlinedTextField(value = editSeries, onValueChange = { editSeries = it }, label = { Text("Serie") })
                     OutlinedTextField(value = editAuthor, onValueChange = { editAuthor = it }, label = { Text("Autor(es)") })
                     OutlinedTextField(value = editPublisher, onValueChange = { editPublisher = it }, label = { Text("Editorial") })
@@ -234,6 +245,7 @@ fun LibraryScreen(
                     viewModel.updateComicMetadata(
                         comic._id,
                         editTitle,
+                        editIssueNumber.trim().toIntOrNull(),
                         editSeries,
                         editAuthor,
                         editPublisher,
@@ -504,6 +516,15 @@ fun ComicGridItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (comic.issueNumber != null) {
+                    Text(
+                        text = "Nº ${comic.issueNumber}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (comic.series.isNotEmpty()) {
                     Text(
                         text = comic.series,

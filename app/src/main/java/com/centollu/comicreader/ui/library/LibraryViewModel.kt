@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
+import com.centollu.comicreader.util.ComicTitleParser
 import com.centollu.comicreader.util.ExtractedComicResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,9 +97,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 destFile.outputStream().use { output -> input.copyTo(output) }
             }
 
+            val parsed = ComicTitleParser.parse(fileName.substringBeforeLast('.'))
             val comicDoc = ComicDocument().apply {
                 this.filePath = destFile.absolutePath
-                this.title = fileName.substringBeforeLast('.')
+                this.title = parsed.title
+                this.issueNumber = parsed.issueNumber
                 this.series = ""
                 this.authors = ""
                 this.publisher = ""
@@ -135,9 +138,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 for (file in files) {
                     val existing = repository.findComicByFilePath(file.absolutePath)
                     if (existing == null) {
+                        val parsed = ComicTitleParser.parse(file.nameWithoutExtension)
                         val comicDoc = ComicDocument().apply {
                             this.filePath = file.absolutePath
-                            this.title = file.nameWithoutExtension
+                            this.title = parsed.title
+                            this.issueNumber = parsed.issueNumber
                         }
 
                         // Escaneo ultrarrápido: extrae SOLO la portada en filesDir/covers/
@@ -222,13 +227,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun updateComicMetadata(
         comicId: String,
         title: String,
+        issueNumber: Int?,
         series: String,
         authors: String,
         publisher: String,
         storyArc: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateComicMetadata(comicId, title, series, authors, publisher, storyArc)
+            repository.updateComicMetadata(comicId, title, issueNumber, series, authors, publisher, storyArc)
         }
     }
 

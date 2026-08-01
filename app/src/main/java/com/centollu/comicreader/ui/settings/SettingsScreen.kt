@@ -8,10 +8,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.NfsManager
 import com.centollu.comicreader.util.NfsServerConfig
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +30,10 @@ fun SettingsScreen() {
         mutableStateOf(ComicExtractor.getMaxCacheSize(context) / (1024f * 1024 * 1024))
     }
     var currentUsageBytes by remember { mutableStateOf(0L) }
+
+    var gridColumns by remember {
+        mutableStateOf(AppPrefs.getGridColumns(context).toFloat())
+    }
 
     LaunchedEffect(Unit) {
         currentUsageBytes = ComicExtractor.getCurrentCacheSize(context)
@@ -123,6 +129,32 @@ fun SettingsScreen() {
                             fontSize = 12.sp
                         )
                     }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Biblioteca",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Elementos por fila: ${gridColumns.roundToInt()}",
+                        fontSize = 14.sp
+                    )
+                    Slider(
+                        value = gridColumns,
+                        onValueChange = { gridColumns = it },
+                        onValueChangeFinished = {
+                            AppPrefs.setGridColumns(context, gridColumns.roundToInt())
+                        },
+                        valueRange = 1f..6f,
+                        steps = 4
+                    )
                 }
             }
 

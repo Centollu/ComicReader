@@ -10,6 +10,7 @@ class ComicDocument {
     var _id: String = UUID.randomUUID().toString()
     var filePath: String = ""
     var title: String = ""
+    var issueNumber: Int? = null
     var series: String = ""
     var authors: String = ""
     var publisher: String = ""

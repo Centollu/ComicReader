@@ -27,10 +27,11 @@ interface ComicDao {
     @Query("UPDATE comics SET coverFilename = :coverFilename WHERE _id = :id")
     suspend fun updateCoverFilename(id: String, coverFilename: String)
 
-    @Query("UPDATE comics SET title = :title, series = :series, authors = :authors, publisher = :publisher, storyArc = :storyArc WHERE _id = :id")
+    @Query("UPDATE comics SET title = :title, issueNumber = :issueNumber, series = :series, authors = :authors, publisher = :publisher, storyArc = :storyArc WHERE _id = :id")
     suspend fun updateComicMetadata(
         id: String,
         title: String,
+        issueNumber: Int?,
         series: String,
         authors: String,
         publisher: String,

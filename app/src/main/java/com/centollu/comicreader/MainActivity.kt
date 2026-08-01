@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Settings
@@ -24,6 +25,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.centollu.comicreader.ui.folders.FoldersScreen
+import com.centollu.comicreader.ui.folders.FoldersViewModel
 import com.centollu.comicreader.ui.history.HistoryScreen
 import com.centollu.comicreader.ui.history.HistoryViewModel
 import com.centollu.comicreader.ui.library.LibraryScreen
@@ -101,6 +104,7 @@ class MainActivity : ComponentActivity() {
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Library : Screen("library", "Biblioteca", Icons.Default.LibraryBooks)
     object History : Screen("history", "Historial", Icons.Default.History)
+    object Folders : Screen("folders", "Carpetas", Icons.Default.FolderOpen)
     object Settings : Screen("settings", "Ajustes", Icons.Default.Settings)
 }
 
@@ -112,9 +116,10 @@ fun MainAppContent() {
 
     val libraryViewModel: LibraryViewModel = viewModel()
     val historyViewModel: HistoryViewModel = viewModel()
+    val foldersViewModel: FoldersViewModel = viewModel()
     val readerViewModel: ReaderViewModel = viewModel()
 
-    val screens = listOf(Screen.Library, Screen.History, Screen.Settings)
+    val screens = listOf(Screen.Library, Screen.History, Screen.Folders, Screen.Settings)
 
     if (activeReadingComicId != null) {
         ReaderScreen(
@@ -152,6 +157,13 @@ fun MainAppContent() {
                         onResumeReading = { comicId, pageIndex ->
                             activeReadingInitialPage = pageIndex
                             activeReadingComicId = comicId
+                        }
+                    )
+                    Screen.Folders -> FoldersScreen(
+                        viewModel = foldersViewModel,
+                        onComicSelected = { comic ->
+                            activeReadingInitialPage = 0
+                            activeReadingComicId = comic._id
                         }
                     )
                     Screen.Settings -> SettingsScreen()

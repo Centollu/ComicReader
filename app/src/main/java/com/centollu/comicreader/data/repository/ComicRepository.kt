@@ -27,12 +27,13 @@ class ComicRepository(context: Context) {
     suspend fun updateComicMetadata(
         comicId: String,
         title: String,
+        issueNumber: Int?,
         series: String,
         authors: String,
         publisher: String,
         storyArc: String
     ) {
-        dao.updateComicMetadata(comicId, title, series, authors, publisher, storyArc)
+        dao.updateComicMetadata(comicId, title, issueNumber, series, authors, publisher, storyArc)
     }
 
     suspend fun deleteComic(comicId: String) = dao.deleteComic(comicId)
