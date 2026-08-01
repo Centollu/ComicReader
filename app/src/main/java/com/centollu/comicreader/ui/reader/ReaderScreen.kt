@@ -6,7 +6,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -18,14 +21,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastForEach
 import coil.compose.rememberAsyncImagePainter
 import java.io.File
 
@@ -51,16 +58,7 @@ fun ReaderScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (uiState.isLoading) {
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CircularProgressIndicator(color = Color.White)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Descomprimiendo cómic en la caché...", color = Color.White)
-            }
-        } else if (uiState.errorMessage != null) {
+        if (uiState.errorMessage != null) {
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -73,14 +71,33 @@ fun ReaderScreen(
                     Text("Volver")
                 }
             }
-        } else if (uiState.pageFiles.isNotEmpty()) {
+        } else if (uiState.pageFiles.isEmpty()) {
+            // Aún no hay ninguna página extraída
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(color = Color.White)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Descomprimiendo cómic en la caché...", color = Color.White)
+            }
+        } else {
             val pagerState = rememberPagerState(
-                initialPage = uiState.currentPageIndex,
+                initialPage = uiState.currentPageIndex.coerceIn(0, uiState.pageFiles.lastIndex),
                 pageCount = { uiState.pageFiles.size }
             )
 
             LaunchedEffect(pagerState.currentPage) {
                 viewModel.onPageChanged(pagerState.currentPage)
+            }
+
+            // Al terminar la extracción, saltar a la página de reanudación si procede
+            LaunchedEffect(uiState.isLoading, uiState.currentPageIndex) {
+                if (!uiState.isLoading && uiState.currentPageIndex in uiState.pageFiles.indices) {
+                    if (pagerState.currentPage != uiState.currentPageIndex) {
+                        pagerState.scrollToPage(uiState.currentPageIndex)
+                    }
+                }
             }
 
             HorizontalPager(
@@ -92,6 +109,34 @@ fun ReaderScreen(
                     imageFile = imageFile,
                     onTap = { showControls = !showControls }
                 )
+            }
+
+            // Indicador de extracción en curso
+            if (uiState.isLoading) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Extrayendo páginas... ${uiState.pageFiles.size}",
+                            color = Color.White,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
             }
 
             // Top Bar Overlay
@@ -173,12 +218,28 @@ fun ZoomableImage(
                 )
             }
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 4f)
-                    if (scale > 1f) {
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    } else {
+                // Solo consume gestos cuando está ampliado; con zoom normal deja
+                // que el HorizontalPager reciba los gestos para cambiar de página.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.fastAny { it.pressed }
+                        val canceled = event.changes.fastAny { it.isConsumed }
+                        if (!pressed || canceled) break
+
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        val newScale = (scale * zoomChange).coerceIn(1f, 4f)
+
+                        if (newScale > 1f) {
+                            event.changes.fastForEach { if (it.positionChanged()) it.consume() }
+                            scale = newScale
+                            offsetX += panChange.x
+                            offsetY += panChange.y
+                        }
+                    }
+                    if (scale <= 1f) {
                         offsetX = 0f
                         offsetY = 0f
                     }

@@ -1,6 +1,7 @@
 package com.centollu.comicreader.ui.library
 
 import android.content.Context
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -8,9 +9,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -42,8 +45,9 @@ fun LibraryScreen(
     val filteredComics = remember(uiState) { viewModel.getFilteredComics() }
 
     var showScanDialog by remember { mutableStateOf(false) }
-    var scanPathInput by remember { mutableStateOf("") }
     var editingComicMetadata by remember { mutableStateOf<ComicDocument?>(null) }
+    var showSearchFilters by remember { mutableStateOf(false) }
+    var showSort by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -57,11 +61,17 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Biblioteca de Cómics", fontWeight = FontWeight.Bold) },
+                title = { Text("Biblioteca", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
                 actions = {
+                    IconButton(onClick = { showSearchFilters = !showSearchFilters }) {
+                        Icon(Icons.Default.Search, contentDescription = "Buscar y filtrar")
+                    }
+                    IconButton(onClick = { showSort = !showSort }) {
+                        Icon(Icons.Default.Sort, contentDescription = "Ordenar")
+                    }
                     IconButton(onClick = { showScanDialog = true }) {
                         Icon(Icons.Default.Folder, contentDescription = "Escanear carpeta")
                     }
@@ -84,47 +94,74 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Search and Filters
-            Column(modifier = Modifier.padding(12.dp)) {
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = { viewModel.updateSearchQuery(it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Buscar por título, autor, arco...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (uiState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+            // Search and Filters (ocultos por defecto, se muestran con el botón de búsqueda)
+            if (showSearchFilters) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Buscar por título, autor, arco...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                                }
                             }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Filter chips
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val filterOptions = listOf(
-                        "ALL" to "Todos",
-                        "TITLE" to "Título",
-                        "AUTHOR" to "Autor",
-                        "SERIES" to "Serie",
-                        "PUBLISHER" to "Editorial",
-                        "ARC" to "Arco"
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    filterOptions.forEach { (type, label) ->
-                        FilterChip(
-                            selected = uiState.filterType == type,
-                            onClick = { viewModel.updateFilterType(type) },
-                            label = { Text(label, fontSize = 12.sp) }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Filter chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val filterOptions = listOf(
+                            "ALL" to "Todos",
+                            "TITLE" to "Título",
+                            "AUTHOR" to "Autor",
+                            "SERIES" to "Serie",
+                            "PUBLISHER" to "Editorial",
+                            "ARC" to "Arco"
                         )
+                        filterOptions.forEach { (type, label) ->
+                            FilterChip(
+                                selected = uiState.filterType == type,
+                                onClick = { viewModel.updateFilterType(type) },
+                                label = { Text(label, fontSize = 12.sp) }
+                            )
+                        }
                     }
+                }
+            }
+
+            // Sort selector (oculto por defecto, se muestra con el botón de ordenación)
+            if (showSort) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Ordenar por:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilterChip(
+                        selected = uiState.sortType == "NAME",
+                        onClick = { viewModel.updateSortType("NAME") },
+                        label = { Text("Nombre (A-Z)", fontSize = 12.sp) }
+                    )
+                    FilterChip(
+                        selected = uiState.sortType == "DATE",
+                        onClick = { viewModel.updateSortType("DATE") },
+                        label = { Text("Añadido (reciente)", fontSize = 12.sp) }
+                    )
                 }
             }
 
@@ -163,33 +200,12 @@ fun LibraryScreen(
 
     // Dialog: Scan directory
     if (showScanDialog) {
-        AlertDialog(
-            onDismissRequest = { showScanDialog = false },
-            title = { Text("Escanear carpeta local") },
-            text = {
-                OutlinedTextField(
-                    value = scanPathInput,
-                    onValueChange = { scanPathInput = it },
-                    label = { Text("Ruta del directorio") },
-                    placeholder = { Text("/sdcard/Download/Comics") },
-                    singleLine = true
-                )
+        FolderPickerDialog(
+            onConfirm = { folder ->
+                showScanDialog = false
+                viewModel.scanLocalPath(context, folder.absolutePath)
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    showScanDialog = false
-                    if (scanPathInput.isNotEmpty()) {
-                        viewModel.scanLocalPath(context, scanPathInput)
-                    }
-                }) {
-                    Text("Escanear")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showScanDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
+            onDismiss = { showScanDialog = false }
         )
     }
 
@@ -249,6 +265,133 @@ fun LibraryScreen(
 }
 
 @Composable
+fun FolderPickerDialog(
+    initialPath: String = Environment.getExternalStorageDirectory().absolutePath,
+    onConfirm: (File) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var currentDir by remember { mutableStateOf(File(initialPath)) }
+    var backStack by remember { mutableStateOf(listOf<File>()) }
+    var manualMode by remember { mutableStateOf(false) }
+    var manualPath by remember { mutableStateOf(currentDir.absolutePath) }
+
+    val subdirs = remember(currentDir) {
+        runCatching {
+            currentDir.listFiles()
+                ?.filter { it.isDirectory && it.canRead() }
+                ?.sortedBy { it.name.lowercase() }
+        }.getOrNull() ?: emptyList()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Escanear carpeta local") },
+        text = {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Modo: ${if (manualMode) "manual" else "explorador"}", fontSize = 12.sp)
+                    TextButton(onClick = { manualMode = !manualMode }) {
+                        Text(if (manualMode) "Explorar carpetas" else "Introducir ruta manualmente")
+                    }
+                }
+
+                if (manualMode) {
+                    OutlinedTextField(
+                        value = manualPath,
+                        onValueChange = { manualPath = it },
+                        label = { Text("Ruta del directorio") },
+                        placeholder = { Text(Environment.getExternalStorageDirectory().absolutePath) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(
+                            enabled = backStack.isNotEmpty(),
+                            onClick = {
+                                currentDir = backStack.last()
+                                backStack = backStack.dropLast(1)
+                            }
+                        ) {
+                            Icon(Icons.Default.ArrowUpward, contentDescription = "Subir")
+                        }
+                        Text(
+                            text = currentDir.absolutePath,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    if (subdirs.isEmpty()) {
+                        Text(
+                            text = "No hay subcarpetas accesibles.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.height(300.dp)) {
+                            items(subdirs, key = { it.absolutePath }) { dir ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            backStack = backStack + currentDir
+                                            currentDir = dir
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = dir.name,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val selected = if (manualMode) File(manualPath.trim()) else currentDir
+                if (selected.isDirectory) {
+                    onConfirm(selected)
+                }
+            }) {
+                Text("Escanear")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
 fun ComicGridItem(
     context: Context,
     comic: ComicDocument,
@@ -273,7 +416,7 @@ fun ComicGridItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .aspectRatio(0.66f)
                     .background(Color.DarkGray)
             ) {
                 if (coverFile != null) {
@@ -281,7 +424,7 @@ fun ComicGridItem(
                         painter = rememberAsyncImagePainter(coverFile),
                         contentDescription = "Portada de ${comic.title}",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Fit
                     )
                 } else {
                     Box(
@@ -426,7 +569,7 @@ fun CoverSelectorDialog(
                                 val isCurrentCover = file.name == extracted.coverFilename
                                 Box(
                                     modifier = Modifier
-                                        .aspectRatio(0.7f)
+                                        .aspectRatio(0.66f)
                                         .clip(RoundedCornerShape(8.dp))
                                         .border(
                                             width = if (isCurrentCover) 3.dp else 1.dp,
@@ -439,7 +582,7 @@ fun CoverSelectorDialog(
                                         painter = rememberAsyncImagePainter(file),
                                         contentDescription = file.name,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                     if (isCurrentCover) {
                                         Surface(

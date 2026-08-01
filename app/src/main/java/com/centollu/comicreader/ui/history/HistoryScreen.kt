@@ -10,13 +10,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,13 +44,23 @@ fun HistoryScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
+    var itemToDelete by remember { mutableStateOf<ReadingHistoryDocument?>(null) }
+    var showClearAllDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Historial de Lectura", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                ),
+                actions = {
+                    if (uiState.historyItems.isNotEmpty()) {
+                        IconButton(onClick = { showClearAllDialog = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Borrar todo el historial")
+                        }
+                    }
+                }
             )
         }
     ) { paddingValues ->
@@ -72,12 +86,55 @@ fun HistoryScreen(
                         HistoryCard(
                             context = context,
                             history = history,
-                            onResumeClick = { onResumeReading(history.comicId, history.lastPageOpened) }
+                            onResumeClick = { onResumeReading(history.comicId, history.lastPageOpened) },
+                            onDeleteClick = { itemToDelete = history }
                         )
                     }
                 }
             }
         }
+    }
+
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Eliminar registro") },
+            text = { Text("¿Eliminar \"${item.title}\" del historial?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteHistoryItem(item._id)
+                    itemToDelete = null
+                }) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showClearAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearAllDialog = false },
+            title = { Text("Borrar historial") },
+            text = { Text("¿Eliminar todos los registros de lectura?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearHistory()
+                    showClearAllDialog = false
+                }) {
+                    Text("Borrar todo", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
@@ -85,7 +142,8 @@ fun HistoryScreen(
 fun HistoryCard(
     context: Context,
     history: ReadingHistoryDocument,
-    onResumeClick: () -> Unit
+    onResumeClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     val coverFile = remember(history.comicId) {
         ComicExtractor.getCoverThumbnailFile(context, history.comicId)
@@ -175,6 +233,14 @@ fun HistoryCard(
 
             FilledIconButton(onClick = onResumeClick) {
                 Icon(Icons.Default.PlayArrow, contentDescription = "Reanudar lectura")
+            }
+
+            IconButton(onClick = onDeleteClick) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Eliminar registro",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }

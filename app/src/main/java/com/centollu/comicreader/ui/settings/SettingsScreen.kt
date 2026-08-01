@@ -8,8 +8,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.NfsManager
 import com.centollu.comicreader.util.NfsServerConfig
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,6 +22,16 @@ fun SettingsScreen() {
     var pathInput by remember { mutableStateOf(nfsConfig.exportPath) }
     var nfsEnabled by remember { mutableStateOf(nfsConfig.isEnabled) }
     var showSavedMessage by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    var cacheGb by remember {
+        mutableStateOf(ComicExtractor.getMaxCacheSize(context) / (1024f * 1024 * 1024))
+    }
+    var currentUsageBytes by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(Unit) {
+        currentUsageBytes = ComicExtractor.getCurrentCacheSize(context)
+    }
 
     Scaffold(
         topBar = {
@@ -111,6 +123,52 @@ fun SettingsScreen() {
                             fontSize = 12.sp
                         )
                     }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Caché de lectura",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Tamaño máximo: ${"%.1f".format(cacheGb)} GB",
+                        fontSize = 14.sp
+                    )
+                    Slider(
+                        value = cacheGb,
+                        onValueChange = { cacheGb = it },
+                        onValueChangeFinished = {
+                            val bytes = (cacheGb * 1024 * 1024 * 1024).toLong()
+                            ComicExtractor.setMaxCacheSize(context, bytes)
+                            scope.launch {
+                                ComicExtractor.trimCache(context)
+                                currentUsageBytes = ComicExtractor.getCurrentCacheSize(context)
+                            }
+                        },
+                        valueRange = 1f..50f
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Los cómics extraídos se mantienen en caché hasta alcanzar el tamaño máximo. Al llenarse, se eliminan los más antiguos (FIFO) para dejar espacio.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Uso actual de caché: ${"%.2f".format(currentUsageBytes / (1024f * 1024 * 1024))} GB",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

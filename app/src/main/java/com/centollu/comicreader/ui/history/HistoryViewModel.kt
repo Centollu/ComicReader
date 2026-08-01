@@ -34,4 +34,16 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
+
+    fun deleteHistoryItem(id: String) {
+        viewModelScope.launch {
+            repository.deleteHistoryItem(id)
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            repository.clearHistory()
+        }
+    }
 }

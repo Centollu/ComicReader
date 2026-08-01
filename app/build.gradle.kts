@@ -73,7 +73,7 @@ dependencies {
 
     // Archive handlers (CBZ / CBR)
     implementation("org.apache.commons:commons-compress:1.26.1")
-    implementation("com.github.junrar:junrar:7.5.5")
+    implementation("com.github.junrar:junrar:8.0.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")

@@ -46,6 +46,12 @@ interface ComicDao {
     @Query("SELECT * FROM reading_history WHERE comicId = :comicId")
     suspend fun getHistoryForComic(comicId: String): ReadingHistoryDocument?
 
+    @Query("DELETE FROM reading_history WHERE _id = :id")
+    suspend fun deleteHistory(id: String)
+
+    @Query("DELETE FROM reading_history")
+    suspend fun clearHistory()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistory(history: ReadingHistoryDocument)
 

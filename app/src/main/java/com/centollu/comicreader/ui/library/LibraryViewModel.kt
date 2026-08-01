@@ -22,6 +22,7 @@ data class LibraryUiState(
     val comics: List<ComicDocument> = emptyList(),
     val searchQuery: String = "",
     val filterType: String = "ALL", // ALL, TITLE, AUTHOR, SERIES, PUBLISHER, ARC
+    val sortType: String = "NAME", // NAME (filename asc), DATE (added desc)
     val isLoading: Boolean = false,
     val selectedComicForCoverPicker: ComicDocument? = null,
     val extractedComicResult: ExtractedComicResult? = null,
@@ -55,25 +56,34 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(filterType = filterType)
     }
 
+    fun updateSortType(sortType: String) {
+        _uiState.value = _uiState.value.copy(sortType = sortType)
+    }
+
     fun getFilteredComics(): List<ComicDocument> {
         val query = _uiState.value.searchQuery.trim().lowercase()
-        val comics = _uiState.value.comics
-        if (query.isEmpty()) return comics
-
-        return when (_uiState.value.filterType) {
-            "TITLE" -> comics.filter { it.title.lowercase().contains(query) }
-            "AUTHOR" -> comics.filter { it.authors.lowercase().contains(query) }
-            "SERIES" -> comics.filter { it.series.lowercase().contains(query) }
-            "PUBLISHER" -> comics.filter { it.publisher.lowercase().contains(query) }
-            "ARC" -> comics.filter { it.storyArc.lowercase().contains(query) }
-            else -> comics.filter {
-                it.title.lowercase().contains(query) ||
-                it.filePath.lowercase().contains(query) ||
-                it.authors.lowercase().contains(query) ||
-                it.series.lowercase().contains(query) ||
-                it.publisher.lowercase().contains(query) ||
-                it.storyArc.lowercase().contains(query)
+        var comics = _uiState.value.comics
+        if (query.isNotEmpty()) {
+            comics = when (_uiState.value.filterType) {
+                "TITLE" -> comics.filter { it.title.lowercase().contains(query) }
+                "AUTHOR" -> comics.filter { it.authors.lowercase().contains(query) }
+                "SERIES" -> comics.filter { it.series.lowercase().contains(query) }
+                "PUBLISHER" -> comics.filter { it.publisher.lowercase().contains(query) }
+                "ARC" -> comics.filter { it.storyArc.lowercase().contains(query) }
+                else -> comics.filter {
+                    it.title.lowercase().contains(query) ||
+                    it.filePath.lowercase().contains(query) ||
+                    it.authors.lowercase().contains(query) ||
+                    it.series.lowercase().contains(query) ||
+                    it.publisher.lowercase().contains(query) ||
+                    it.storyArc.lowercase().contains(query)
+                }
             }
+        }
+
+        return when (_uiState.value.sortType) {
+            "DATE" -> comics.sortedByDescending { it.addedTimestamp }
+            else -> comics.sortedBy { it.filePath.substringAfterLast('/').lowercase() }
         }
     }
 
@@ -100,7 +110,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 context = context,
                             comicId = comicDoc._id,
                 inputStreamProvider = { FileInputStream(destFile) },
-                fileExtension = destFile.extension
+                fileExtension = destFile.extension,
+                sourceFile = destFile
             )
 
             comicDoc.pageCount = scanResult.pageCount
@@ -134,7 +145,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                             context = context,
                 comicId = comicDoc._id,
                             inputStreamProvider = { FileInputStream(file) },
-                            fileExtension = file.extension
+                            fileExtension = file.extension,
+                            sourceFile = file
                         )
 
                         comicDoc.pageCount = scanResult.pageCount
@@ -163,7 +175,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 comicId = comicId,
                 inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
                 fileExtension = file.extension,
-                targetCoverFilename = comic.coverFilename
+                targetCoverFilename = comic.coverFilename,
+                sourceFile = file
             )
 
             _uiState.value = _uiState.value.copy(
@@ -186,7 +199,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 comicId = comicId,
                 inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
                 fileExtension = file.extension,
-                targetCoverFilename = newCoverName
+                targetCoverFilename = newCoverName,
+                sourceFile = file
             )
 
             repository.updateCoverFilename(comicId, newCoverName)

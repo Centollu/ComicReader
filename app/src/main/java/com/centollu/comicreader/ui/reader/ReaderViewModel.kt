@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
+import com.centollu.comicreader.util.NaturalOrderComparator
 import com.centollu.comicreader.util.NfsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loadComic(context: Context, comicId: String, initialPageIndex: Int = 0) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                errorMessage = null,
+                pageFiles = emptyList(),
+                currentPageIndex = 0
+            )
 
             val comic = repository.getComicById(comicId)
             if (comic == null) {
@@ -42,6 +48,21 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     errorMessage = "Cómic no encontrado en la base de datos."
                 )
                 return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(comic = comic)
+
+            // Actualiza la UI a medida que cada página se extrae en la caché,
+            // permitiendo leer mientras la extracción continúa en segundo plano.
+            val extractedPages = mutableListOf<File>()
+            val onPageExtracted: (File) -> Unit = { page ->
+                extractedPages.add(page)
+                val sorted = extractedPages.sortedWith(NaturalOrderComparator())
+                _uiState.value = _uiState.value.copy(
+                    pageFiles = sorted,
+                    currentPageIndex = _uiState.value.currentPageIndex.coerceIn(0, sorted.lastIndex),
+                    isLoading = true
+                )
             }
 
             try {
@@ -54,7 +75,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         else NfsManager.getInputStreamForPath(comic.filePath)
                     },
                     fileExtension = file.extension.ifEmpty { "cbz" },
-                    targetCoverFilename = comic.coverFilename
+                    targetCoverFilename = comic.coverFilename,
+                    sourceFile = file,
+                    onPageExtracted = onPageExtracted
                 )
 
                 val startPage = if (initialPageIndex in result.pageFiles.indices) initialPageIndex else 0

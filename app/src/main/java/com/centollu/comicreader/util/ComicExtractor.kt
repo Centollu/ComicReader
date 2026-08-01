@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 data class ExtractedComicResult(
@@ -29,7 +30,58 @@ data class QuickScanResult(
 
 object ComicExtractor {
 
+    private const val CACHE_PREFS = "comic_cache_prefs"
+    private const val KEY_CACHE_MAX_SIZE = "cache_max_size_bytes"
+    private const val DEFAULT_CACHE_MAX_SIZE: Long = 5L * 1024 * 1024 * 1024
+
     private val SUPPORTED_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+
+    fun getMaxCacheSize(context: Context): Long {
+        val prefs = context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_CACHE_MAX_SIZE, DEFAULT_CACHE_MAX_SIZE).coerceAtLeast(1L)
+    }
+
+    fun setMaxCacheSize(context: Context, sizeBytes: Long) {
+        context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_CACHE_MAX_SIZE, sizeBytes.coerceAtLeast(1L))
+            .apply()
+    }
+
+    suspend fun getCurrentCacheSize(context: Context): Long = withContext(Dispatchers.IO) {
+        val root = File(context.cacheDir, "extracted")
+        if (!root.exists()) return@withContext 0L
+        root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    /**
+     * Desaloja cómics extraídos de la caché siguiendo FIFO (los más antiguos primero)
+     * hasta que el tamaño total esté por debajo del límite configurado.
+     */
+    suspend fun trimCache(context: Context) = withContext(Dispatchers.IO) {
+        enforceCacheLimit(context)
+    }
+
+    private fun enforceCacheLimit(context: Context, protectedDir: File? = null) {
+        val root = File(context.cacheDir, "extracted")
+        if (!root.exists()) return
+        val maxSize = getMaxCacheSize(context)
+
+        val dirs = root.listFiles()?.filter { it.isDirectory }?.toMutableList() ?: return
+        var total = dirs.sumOf { it.totalSize() }
+
+        // FIFO: borrar primero los directorios con menor lastModified (más antiguos)
+        dirs.sortBy { it.lastModified() }
+
+        for (dir in dirs) {
+            if (total <= maxSize) break
+            if (dir == protectedDir) continue
+            total -= dir.totalSize()
+            dir.deleteRecursively()
+        }
+    }
+
+    private fun File.totalSize(): Long = walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     fun isSupportedImage(filename: String): Boolean {
         val ext = filename.substringAfterLast('.', "").lowercase()
@@ -45,7 +97,8 @@ object ComicExtractor {
         comicId: String,
         inputStreamProvider: () -> InputStream?,
         fileExtension: String,
-        targetCoverFilename: String? = null
+        targetCoverFilename: String? = null,
+        sourceFile: File? = null
     ): QuickScanResult = withContext(Dispatchers.IO) {
 
         val coversDir = File(context.filesDir, "covers")
@@ -59,71 +112,98 @@ object ComicExtractor {
         val ext = fileExtension.lowercase()
 
         if (ext == "cbz" || ext == "zip") {
-            val stream = inputStreamProvider()
-            if (stream != null) {
-                ZipInputStream(stream).use { zipStream ->
-                    var entry: ZipEntry? = zipStream.nextEntry
+            val coverEntries = mutableListOf<String>()
+            if (sourceFile != null && sourceFile.exists()) {
+                ZipFile(sourceFile).use { zipFile ->
                     var coverExtracted = false
-
-                    val imageEntries = mutableListOf<String>()
-
-                    while (entry != null) {
+                    val entries = zipFile.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
                         if (!entry.isDirectory && isSupportedImage(entry.name)) {
-                            imageEntries.add(entry.name)
+                            coverEntries.add(entry.name)
                             pageCount++
 
                             val nameOnly = SimpleFileName(entry.name)
                             if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
                                 foundCoverName = nameOnly
                                 FileOutputStream(tempCoverFile).use { out ->
-                                    zipStream.copyTo(out)
+                                    zipFile.getInputStream(entry).use { it.copyTo(out) }
                                 }
                                 coverExtracted = true
                             }
                         }
-                        zipStream.closeEntry()
-                        entry = zipStream.nextEntry
                     }
+                }
+            } else {
+                val stream = inputStreamProvider()
+                if (stream != null) {
+                    ZipInputStream(stream).use { zipStream ->
+                        var entry: ZipEntry? = zipStream.nextEntry
+                        var coverExtracted = false
 
-                    if (!coverExtracted && imageEntries.isNotEmpty()) {
-                        // Fallback: use first image entry name
-                        foundCoverName = SimpleFileName(imageEntries.first())
+                        while (entry != null) {
+                            if (!entry.isDirectory && isSupportedImage(entry.name)) {
+                                coverEntries.add(entry.name)
+                                pageCount++
+
+                                val nameOnly = SimpleFileName(entry.name)
+                                if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
+                                    foundCoverName = nameOnly
+                                    FileOutputStream(tempCoverFile).use { out ->
+                                        zipStream.copyTo(out)
+                                    }
+                                    coverExtracted = true
+                                }
+                            }
+                            zipStream.closeEntry()
+                            entry = zipStream.nextEntry
+                        }
                     }
                 }
             }
+
+            if (foundCoverName.isEmpty() && coverEntries.isNotEmpty()) {
+                // Fallback: use first image entry name
+                foundCoverName = SimpleFileName(coverEntries.first())
+            }
         } else if (ext == "cbr" || ext == "rar") {
-            val stream = inputStreamProvider()
-            if (stream != null) {
-                try {
-                    val archive = Archive(stream)
-                    var header: FileHeader? = archive.nextFileHeader()
-                    var coverExtracted = false
-                    val imageEntries = mutableListOf<String>()
-
-                    while (header != null) {
-                        if (!header.isDirectory && isSupportedImage(header.fileNameString)) {
-                            imageEntries.add(header.fileNameString)
-                            pageCount++
-
-                            val nameOnly = SimpleFileName(header.fileNameString)
-                            if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
-                                foundCoverName = nameOnly
-                                FileOutputStream(tempCoverFile).use { out ->
-                                    archive.extractFile(header, out)
-                                }
-                                coverExtracted = true
-                            }
-                        }
-                        header = archive.nextFileHeader()
+            try {
+                val archive = if (sourceFile != null && sourceFile.exists()) {
+                    Archive(sourceFile)
+                } else {
+                    val stream = inputStreamProvider()
+                    if (stream == null) {
+                        return@withContext QuickScanResult(0, "", "")
                     }
-                    archive.close()
-
-                    if (!coverExtracted && imageEntries.isNotEmpty()) {
-                        foundCoverName = SimpleFileName(imageEntries.first())
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                    Archive(stream)
                 }
+                var header: FileHeader? = archive.nextFileHeader()
+                var coverExtracted = false
+                val imageEntries = mutableListOf<String>()
+
+                while (header != null) {
+                    if (!header.isDirectory && isSupportedImage(header.fileName)) {
+                        imageEntries.add(header.fileName)
+                        pageCount++
+
+                        val nameOnly = SimpleFileName(header.fileName)
+                        if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
+                            foundCoverName = nameOnly
+                            FileOutputStream(tempCoverFile).use { out ->
+                                archive.extractFile(header, out)
+                            }
+                            coverExtracted = true
+                        }
+                    }
+                    header = archive.nextFileHeader()
+                }
+                archive.close()
+
+                if (!coverExtracted && imageEntries.isNotEmpty()) {
+                    foundCoverName = SimpleFileName(imageEntries.first())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
@@ -148,27 +228,45 @@ object ComicExtractor {
         comicId: String,
         inputStreamProvider: () -> InputStream?,
         fileExtension: String,
-        targetCoverFilename: String? = null
+        targetCoverFilename: String? = null,
+        sourceFile: File? = null,
+        onPageExtracted: ((File) -> Unit)? = null
     ): ExtractedComicResult = withContext(Dispatchers.IO) {
 
         val cacheBaseDir = File(context.cacheDir, "extracted/$comicId")
-        if (cacheBaseDir.exists()) {
-            cacheBaseDir.deleteRecursively()
-        }
-        cacheBaseDir.mkdirs()
 
-        val ext = fileExtension.lowercase()
-        if (ext == "cbz" || ext == "zip") {
-            extractZip(inputStreamProvider, cacheBaseDir)
-        } else if (ext == "cbr" || ext == "rar") {
-            extractRar(inputStreamProvider, cacheBaseDir)
+        // Reutilizar la extracción si ya está en caché
+        var allImages = if (cacheBaseDir.exists()) {
+            cacheBaseDir.walkTopDown()
+                .filter { it.isFile && isSupportedImage(it.name) }
+                .toList()
+        } else {
+            emptyList()
         }
 
-        // Obtener todas las imágenes ordenadas alfabéticamente/naturalmente
-        val allImages = cacheBaseDir.walkTopDown()
-            .filter { it.isFile && isSupportedImage(it.name) }
-            .sortedWith(NaturalOrderComparator())
-            .toList()
+        if (allImages.isEmpty()) {
+            if (cacheBaseDir.exists()) {
+                cacheBaseDir.deleteRecursively()
+            }
+            cacheBaseDir.mkdirs()
+
+            val ext = fileExtension.lowercase()
+            if (ext == "cbz" || ext == "zip") {
+                extractZip(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
+            } else if (ext == "cbr" || ext == "rar") {
+                extractRar(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
+            }
+
+            allImages = cacheBaseDir.walkTopDown()
+                .filter { it.isFile && isSupportedImage(it.name) }
+                .sortedWith(NaturalOrderComparator())
+                .toList()
+        } else {
+            allImages = allImages.sortedWith(NaturalOrderComparator())
+        }
+
+        // Aplicar evicción FIFO para no superar el límite de caché configurado
+        enforceCacheLimit(context, protectedDir = cacheBaseDir)
 
         val coverFile = if (!targetCoverFilename.isNullOrEmpty()) {
             allImages.find { it.name.equals(targetCoverFilename, ignoreCase = true) } ?: allImages.firstOrNull()
@@ -195,7 +293,29 @@ object ComicExtractor {
         )
     }
 
-    private fun extractZip(inputStreamProvider: () -> InputStream?, outputDir: File) {
+    private fun extractZip(
+        inputStreamProvider: () -> InputStream?,
+        outputDir: File,
+        sourceFile: File? = null,
+        onPageExtracted: ((File) -> Unit)? = null
+    ) {
+        if (sourceFile != null && sourceFile.exists()) {
+            ZipFile(sourceFile).use { zipFile ->
+                val entries = zipFile.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    if (!entry.isDirectory && isSupportedImage(entry.name)) {
+                        val fileName = SimpleFileName(entry.name)
+                        val outputFile = File(outputDir, fileName)
+                        FileOutputStream(outputFile).use { out ->
+                            zipFile.getInputStream(entry).use { it.copyTo(out) }
+                        }
+                        onPageExtracted?.invoke(outputFile)
+                    }
+                }
+            }
+            return
+        }
         val stream = inputStreamProvider() ?: return
         ZipInputStream(stream).use { zipStream ->
             var entry: ZipEntry? = zipStream.nextEntry
@@ -206,6 +326,7 @@ object ComicExtractor {
                     FileOutputStream(outputFile).use { out ->
                         zipStream.copyTo(out)
                     }
+                    onPageExtracted?.invoke(outputFile)
                 }
                 zipStream.closeEntry()
                 entry = zipStream.nextEntry
@@ -213,18 +334,28 @@ object ComicExtractor {
         }
     }
 
-    private fun extractRar(inputStreamProvider: () -> InputStream?, outputDir: File) {
-        val stream = inputStreamProvider() ?: return
+    private fun extractRar(
+        inputStreamProvider: () -> InputStream?,
+        outputDir: File,
+        sourceFile: File? = null,
+        onPageExtracted: ((File) -> Unit)? = null
+    ) {
         try {
-            val archive = Archive(stream)
+            val archive = if (sourceFile != null && sourceFile.exists()) {
+                Archive(sourceFile)
+            } else {
+                val stream = inputStreamProvider() ?: return
+                Archive(stream)
+            }
             var header: FileHeader? = archive.nextFileHeader()
             while (header != null) {
-                if (!header.isDirectory && isSupportedImage(header.fileNameString)) {
-                    val fileName = SimpleFileName(header.fileNameString)
+                if (!header.isDirectory && isSupportedImage(header.fileName)) {
+                    val fileName = SimpleFileName(header.fileName)
                     val outputFile = File(outputDir, fileName)
                     FileOutputStream(outputFile).use { out ->
                         archive.extractFile(header, out)
                     }
+                    onPageExtracted?.invoke(outputFile)
                 }
                 header = archive.nextFileHeader()
             }
