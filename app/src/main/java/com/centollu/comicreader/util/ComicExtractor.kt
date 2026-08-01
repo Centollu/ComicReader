@@ -308,7 +308,7 @@ class NaturalOrderComparator : Comparator<File> {
                 }
             } else {
                 if (c1 != c2) {
-                    return c1.compareTo(c2, ignoreCase = true)
+                    return c1.lowercaseChar().compareTo(c2.lowercaseChar())
                 }
                 i1++
                 i2++
