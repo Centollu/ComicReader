@@ -8,6 +8,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.pm.PackageManager
+import android.os.Build
 import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.NfsManager
@@ -33,6 +35,19 @@ fun SettingsScreen() {
 
     var gridColumns by remember {
         mutableStateOf(AppPrefs.getGridColumns(context).toFloat())
+    }
+
+    val versionName = remember {
+        runCatching {
+            val pm = context.packageManager
+            val pkgInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(context.packageName, 0)
+            }
+            pkgInfo.versionName ?: "Desconocida"
+        }.getOrNull() ?: "Desconocida"
     }
 
     LaunchedEffect(Unit) {
@@ -208,7 +223,7 @@ fun SettingsScreen() {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Acerca de ComicReader", fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Versión: 1.0.0", fontSize = 12.sp)
+                    Text("Versión: $versionName", fontSize = 12.sp)
                     Text("Motor BD: MongoDB Realm (Local)", fontSize = 12.sp)
                     Text("Formatos soportados: .cbz (ZIP) y .cbr (RAR)", fontSize = 12.sp)
                 }

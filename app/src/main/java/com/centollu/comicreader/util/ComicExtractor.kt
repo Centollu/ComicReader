@@ -146,36 +146,14 @@ object ComicExtractor {
         val archiveType = detectArchiveType(sourceFile, inputStreamProvider)
 
         if (archiveType == ArchiveType.ZIP) {
-            val coverEntries = mutableListOf<String>()
-            if (sourceFile != null && sourceFile.exists()) {
-                ZipFile(sourceFile).use { zipFile ->
-                    var coverExtracted = false
-                    val entries = zipFile.entries()
-                    while (entries.hasMoreElements()) {
-                        val entry = entries.nextElement()
-                        if (!entry.isDirectory && isSupportedImage(entry.name)) {
-                            coverEntries.add(entry.name)
-                            pageCount++
-
-                            val nameOnly = SimpleFileName(entry.name)
-                            if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
-                                foundCoverName = nameOnly
-                                FileOutputStream(tempCoverFile).use { out ->
-                                    zipFile.getInputStream(entry).use { it.copyTo(out) }
-                                }
-                                coverExtracted = true
-                            }
-                        }
-                    }
-                }
-            } else {
-                val stream = inputStreamProvider()
-                if (stream != null) {
-                    ZipInputStream(stream).use { zipStream ->
-                        var entry: ZipEntry? = zipStream.nextEntry
+            try {
+                val coverEntries = mutableListOf<String>()
+                if (sourceFile != null && sourceFile.exists()) {
+                    ZipFile(sourceFile).use { zipFile ->
                         var coverExtracted = false
-
-                        while (entry != null) {
+                        val entries = zipFile.entries()
+                        while (entries.hasMoreElements()) {
+                            val entry = entries.nextElement()
                             if (!entry.isDirectory && isSupportedImage(entry.name)) {
                                 coverEntries.add(entry.name)
                                 pageCount++
@@ -184,21 +162,47 @@ object ComicExtractor {
                                 if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
                                     foundCoverName = nameOnly
                                     FileOutputStream(tempCoverFile).use { out ->
-                                        zipStream.copyTo(out)
+                                        zipFile.getInputStream(entry).use { it.copyTo(out) }
                                     }
                                     coverExtracted = true
                                 }
                             }
-                            zipStream.closeEntry()
-                            entry = zipStream.nextEntry
+                        }
+                    }
+                } else {
+                    val stream = inputStreamProvider()
+                    if (stream != null) {
+                        ZipInputStream(stream).use { zipStream ->
+                            var entry: ZipEntry? = zipStream.nextEntry
+                            var coverExtracted = false
+
+                            while (entry != null) {
+                                if (!entry.isDirectory && isSupportedImage(entry.name)) {
+                                    coverEntries.add(entry.name)
+                                    pageCount++
+
+                                    val nameOnly = SimpleFileName(entry.name)
+                                    if (!coverExtracted && (targetCoverFilename.isNullOrEmpty() || nameOnly.equals(targetCoverFilename, ignoreCase = true))) {
+                                        foundCoverName = nameOnly
+                                        FileOutputStream(tempCoverFile).use { out ->
+                                            zipStream.copyTo(out)
+                                        }
+                                        coverExtracted = true
+                                    }
+                                }
+                                zipStream.closeEntry()
+                                entry = zipStream.nextEntry
+                            }
                         }
                     }
                 }
-            }
 
-            if (foundCoverName.isEmpty() && coverEntries.isNotEmpty()) {
-                // Fallback: use first image entry name
-                foundCoverName = SimpleFileName(coverEntries.first())
+                if (foundCoverName.isEmpty() && coverEntries.isNotEmpty()) {
+                    // Fallback: use first image entry name
+                    foundCoverName = SimpleFileName(coverEntries.first())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         } else if (archiveType == ArchiveType.RAR) {
             try {

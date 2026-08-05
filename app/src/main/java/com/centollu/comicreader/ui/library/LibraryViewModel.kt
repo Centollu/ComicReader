@@ -171,28 +171,33 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }.toList()
 
         for (file in files) {
-            val existing = repository.findComicByFilePath(file.absolutePath)
-            if (existing == null) {
-                val parsed = ComicTitleParser.parse(file.nameWithoutExtension)
-                val comicDoc = ComicDocument().apply {
-                    this.filePath = file.absolutePath
-                    this.title = parsed.title
-                    this.issueNumber = parsed.issueNumber
+            try {
+                val existing = repository.findComicByFilePath(file.absolutePath)
+                if (existing == null) {
+                    val parsed = ComicTitleParser.parse(file.nameWithoutExtension)
+                    val comicDoc = ComicDocument().apply {
+                        this.filePath = file.absolutePath
+                        this.title = parsed.title
+                        this.issueNumber = parsed.issueNumber
+                    }
+
+                    val scanResult = ComicExtractor.extractOnlyCover(
+                        context = context,
+                        comicId = comicDoc._id,
+                        inputStreamProvider = { FileInputStream(file) },
+                        sourceFile = file
+                    )
+
+                    comicDoc.pageCount = scanResult.pageCount
+                    comicDoc.coverFilename = scanResult.coverFilename
+
+                    repository.insertOrUpdateComic(comicDoc)
                 }
-
-                val scanResult = ComicExtractor.extractOnlyCover(
-                    context = context,
-                    comicId = comicDoc._id,
-                    inputStreamProvider = { FileInputStream(file) },
-                    sourceFile = file
-                )
-
-                comicDoc.pageCount = scanResult.pageCount
-                comicDoc.coverFilename = scanResult.coverFilename
-
-                repository.insertOrUpdateComic(comicDoc)
+                addedPaths += file.absolutePath
+            } catch (e: Exception) {
+                // Un archivo corrupto no debe abortar el escaneo de la carpeta completa
+                e.printStackTrace()
             }
-            addedPaths += file.absolutePath
         }
         return addedPaths
     }
