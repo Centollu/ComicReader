@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.centollu.comicreader.ui.components.VerticalSliderBar
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -77,18 +79,26 @@ fun HistoryScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.historyItems, key = { it._id }) { history ->
-                        HistoryCard(
-                            context = context,
-                            history = history,
-                            onResumeClick = { onResumeReading(history.comicId, history.lastPageOpened) },
-                            onDeleteClick = { itemToDelete = history }
-                        )
+                val listState = rememberLazyListState()
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.historyItems, key = { it._id }) { history ->
+                            HistoryCard(
+                                context = context,
+                                history = history,
+                                onResumeClick = { onResumeReading(history.comicId, history.lastPageOpened) },
+                                onDeleteClick = { itemToDelete = history }
+                            )
+                        }
                     }
+                    VerticalSliderBar(
+                        state = listState,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
                 }
             }
         }

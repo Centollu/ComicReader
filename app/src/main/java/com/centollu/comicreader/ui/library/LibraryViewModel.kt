@@ -23,7 +23,7 @@ data class LibraryUiState(
     val comics: List<ComicDocument> = emptyList(),
     val searchQuery: String = "",
     val filterType: String = "ALL", // ALL, TITLE, AUTHOR, SERIES, PUBLISHER, ARC
-    val sortType: String = "NAME", // NAME (filename asc), DATE (added desc)
+    val sortType: String = "NAME", // NAME (filename asc), PATH (ruta asc), DATE (added desc)
     val isLoading: Boolean = false,
     val isRescanning: Boolean = false,
     val selectedComicForCoverPicker: ComicDocument? = null,
@@ -85,6 +85,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
         return when (_uiState.value.sortType) {
             "DATE" -> comics.sortedByDescending { it.addedTimestamp }
+            "PATH" -> comics.sortedBy { it.filePath.lowercase() }
             else -> comics.sortedBy { it.filePath.substringAfterLast('/').lowercase() }
         }
     }

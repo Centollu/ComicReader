@@ -8,12 +8,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import com.centollu.comicreader.ui.components.VerticalSliderBar
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -153,26 +157,32 @@ fun LibraryScreen(
 
             // Sort selector (oculto por defecto, se muestra con el botón de ordenación)
             if (showSort) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                     Text(
                         text = "Ordenar por:",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FilterChip(
-                        selected = uiState.sortType == "NAME",
-                        onClick = { viewModel.updateSortType("NAME") },
-                        label = { Text("Nombre (A-Z)", fontSize = 12.sp) }
-                    )
-                    FilterChip(
-                        selected = uiState.sortType == "DATE",
-                        onClick = { viewModel.updateSortType("DATE") },
-                        label = { Text("Añadido (reciente)", fontSize = 12.sp) }
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        FilterChip(
+                            selected = uiState.sortType == "NAME",
+                            onClick = { viewModel.updateSortType("NAME") },
+                            label = { Text("Nombre (A-Z)", fontSize = 12.sp) }
+                        )
+                        FilterChip(
+                            selected = uiState.sortType == "PATH",
+                            onClick = { viewModel.updateSortType("PATH") },
+                            label = { Text("Ruta (A-Z)", fontSize = 12.sp) }
+                        )
+                        FilterChip(
+                            selected = uiState.sortType == "DATE",
+                            onClick = { viewModel.updateSortType("DATE") },
+                            label = { Text("Añadido (reciente)", fontSize = 12.sp) }
+                        )
+                    }
                 }
             }
 
@@ -196,22 +206,30 @@ fun LibraryScreen(
                     )
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
-                    contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filteredComics, key = { it._id }) { comic ->
-                        ComicGridItem(
-                            context = context,
-                            comic = comic,
-                            onComicClick = { onComicSelected(comic) },
-                            onChangeCoverClick = { viewModel.openCoverSelectionDialog(context, comic) },
-                            onEditMetadataClick = { editingComicMetadata = comic },
-                            onDeleteClick = { viewModel.deleteComic(comic._id) }
-                        )
+                val gridState = rememberLazyGridState()
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(gridColumns),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredComics, key = { it._id }) { comic ->
+                            ComicGridItem(
+                                context = context,
+                                comic = comic,
+                                onComicClick = { onComicSelected(comic) },
+                                onChangeCoverClick = { viewModel.openCoverSelectionDialog(context, comic) },
+                                onEditMetadataClick = { editingComicMetadata = comic },
+                                onDeleteClick = { viewModel.deleteComic(comic._id) }
+                            )
+                        }
                     }
+                    VerticalSliderBar(
+                        state = gridState,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
                 }
             }
         }
