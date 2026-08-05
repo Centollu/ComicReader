@@ -37,6 +37,8 @@ import coil.compose.rememberAsyncImagePainter
 import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ComicExtractor
+import com.centollu.comicreader.util.StorageVolumeInfo
+import com.centollu.comicreader.util.getStorageVolumes
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -295,17 +297,34 @@ fun FolderPickerDialog(
     onConfirm: (File) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var currentDir by remember { mutableStateOf(File(initialPath)) }
-    var backStack by remember { mutableStateOf(listOf<File>()) }
+    val context = LocalContext.current
+    // null = nivel raíz con el listado de almacenamientos (interno y SD)
+    var currentDir by remember { mutableStateOf<File?>(null) }
+    var backStack by remember { mutableStateOf<List<File?>>(emptyList()) }
     var manualMode by remember { mutableStateOf(false) }
-    var manualPath by remember { mutableStateOf(currentDir.absolutePath) }
+    var manualPath by remember { mutableStateOf(initialPath) }
+
+    val storageVolumes = remember {
+        val volumes = getStorageVolumes(context)
+        volumes.ifEmpty {
+            listOf(
+                StorageVolumeInfo(
+                    label = "Almacenamiento interno",
+                    path = Environment.getExternalStorageDirectory(),
+                    isRemovable = false
+                )
+            )
+        }
+    }
 
     val subdirs = remember(currentDir) {
-        runCatching {
-            currentDir.listFiles()
-                ?.filter { it.isDirectory && it.canRead() }
-                ?.sortedBy { it.name.lowercase() }
-        }.getOrNull() ?: emptyList()
+        currentDir?.let { dir ->
+            runCatching {
+                dir.listFiles()
+                    ?.filter { it.isDirectory && it.canRead() }
+                    ?.sortedBy { it.name.lowercase() }
+            }.getOrNull() ?: emptyList()
+        } ?: emptyList()
     }
 
     AlertDialog(
@@ -339,16 +358,16 @@ fun FolderPickerDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         IconButton(
-                            enabled = backStack.isNotEmpty(),
+                            enabled = currentDir != null,
                             onClick = {
-                                currentDir = backStack.last()
+                                currentDir = backStack.lastOrNull()
                                 backStack = backStack.dropLast(1)
                             }
                         ) {
                             Icon(Icons.Default.ArrowUpward, contentDescription = "Subir")
                         }
                         Text(
-                            text = currentDir.absolutePath,
+                            text = currentDir?.absolutePath ?: "Almacenamiento",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -359,7 +378,53 @@ fun FolderPickerDialog(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    if (subdirs.isEmpty()) {
+                    if (currentDir == null) {
+                        if (storageVolumes.isEmpty()) {
+                            Text(
+                                text = "No hay almacenamientos accesibles.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        } else {
+                            LazyColumn(modifier = Modifier.height(300.dp)) {
+                                items(storageVolumes, key = { it.path.absolutePath }) { volume ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                backStack = listOf(null)
+                                                currentDir = volume.path
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (volume.isRemovable) Icons.Default.SdCard else Icons.Default.PhoneAndroid,
+                                            contentDescription = null,
+                                            tint = if (volume.isRemovable) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = volume.label,
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = volume.path.absolutePath,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (subdirs.isEmpty()) {
                         Text(
                             text = "No hay subcarpetas accesibles.",
                             fontSize = 12.sp,
@@ -401,7 +466,7 @@ fun FolderPickerDialog(
         confirmButton = {
             TextButton(onClick = {
                 val selected = if (manualMode) File(manualPath.trim()) else currentDir
-                if (selected.isDirectory) {
+                if (selected != null && selected.isDirectory) {
                     onConfirm(selected)
                 }
             }) {
