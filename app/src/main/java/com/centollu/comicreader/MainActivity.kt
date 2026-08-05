@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,9 +13,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -62,12 +61,16 @@ class MainActivity : ComponentActivity() {
 
     private fun enableImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
-            if (visibility and View.SYSTEM_UI_FLAG_FULLSCREEN == 0) {
-                hideSystemBars()
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        window.decorView.setOnApplyWindowInsetsListener { view, insets ->
+            val compat = WindowInsetsCompat.toWindowInsetsCompat(insets, view)
+            if (compat.isVisible(WindowInsetsCompat.Type.systemBars())) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
             }
+            view.onApplyWindowInsets(insets)
         }
-        hideSystemBars()
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     private fun hideSystemBars() {
@@ -102,7 +105,7 @@ class MainActivity : ComponentActivity() {
 }
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    object Library : Screen("library", "Biblioteca", Icons.Default.LibraryBooks)
+    object Library : Screen("library", "Biblioteca", Icons.AutoMirrored.Filled.LibraryBooks)
     object History : Screen("history", "Historial", Icons.Default.History)
     object Folders : Screen("folders", "Carpetas", Icons.Default.FolderOpen)
     object Settings : Screen("settings", "Ajustes", Icons.Default.Settings)
