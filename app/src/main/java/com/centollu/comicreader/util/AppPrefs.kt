@@ -5,6 +5,7 @@ import android.content.Context
 object AppPrefs {
     private const val PREFS_NAME = "app_prefs"
     private const val KEY_GRID_COLUMNS = "library_grid_columns"
+    private const val KEY_SCANNED_FOLDERS = "scanned_folders"
 
     fun getGridColumns(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -16,5 +17,18 @@ object AppPrefs {
             .edit()
             .putInt(KEY_GRID_COLUMNS, columns.coerceIn(1, 6))
             .apply()
+    }
+
+    fun getScannedFolders(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getStringSet(KEY_SCANNED_FOLDERS, emptySet())?.toList() ?: emptyList()
+    }
+
+    fun addScannedFolder(context: Context, folderPath: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val folders = prefs.getStringSet(KEY_SCANNED_FOLDERS, emptySet())?.toMutableSet()
+            ?: mutableSetOf()
+        folders.add(folderPath)
+        prefs.edit().putStringSet(KEY_SCANNED_FOLDERS, folders).apply()
     }
 }

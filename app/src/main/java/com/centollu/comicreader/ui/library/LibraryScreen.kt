@@ -70,6 +70,9 @@ fun LibraryScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
                 actions = {
+                    IconButton(onClick = { viewModel.rescanFolders(context) }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Volver a escanear carpetas")
+                    }
                     IconButton(onClick = { showSearchFilters = !showSearchFilters }) {
                         Icon(Icons.Default.Search, contentDescription = "Buscar y filtrar")
                     }
@@ -172,6 +175,14 @@ fun LibraryScreen(
             if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
+                }
+            } else if (uiState.isRescanning) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Volviendo a escanear las carpetas...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             } else if (filteredComics.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

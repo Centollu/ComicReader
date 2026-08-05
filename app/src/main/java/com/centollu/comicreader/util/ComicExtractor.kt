@@ -407,6 +407,17 @@ object ComicExtractor {
         
         return null
     }
+
+    fun deleteComicFiles(context: Context, comicId: String) {
+        val coverThumb = File(context.filesDir, "covers/$comicId.jpg")
+        if (coverThumb.exists()) coverThumb.delete()
+
+        val extractedDir = File(context.cacheDir, "extracted/$comicId")
+        if (extractedDir.exists()) extractedDir.deleteRecursively()
+
+        val tempCover = File(context.cacheDir, "temp_cover_$comicId.tmp")
+        if (tempCover.exists()) tempCover.delete()
+    }
 }
 
 class NaturalOrderComparator : Comparator<File> {

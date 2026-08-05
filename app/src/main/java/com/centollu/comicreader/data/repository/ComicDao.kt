@@ -15,6 +15,9 @@ interface ComicDao {
     @Query("SELECT * FROM comics")
     fun getAllComicsFlow(): Flow<List<ComicDocument>>
 
+    @Query("SELECT * FROM comics")
+    suspend fun getAllComics(): List<ComicDocument>
+
     @Query("SELECT * FROM comics WHERE _id = :id")
     suspend fun getComicById(id: String): ComicDocument?
 

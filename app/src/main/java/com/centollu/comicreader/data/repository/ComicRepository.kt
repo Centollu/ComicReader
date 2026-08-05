@@ -13,6 +13,8 @@ class ComicRepository(context: Context) {
 
     fun getAllComicsFlow(): Flow<List<ComicDocument>> = dao.getAllComicsFlow()
 
+    suspend fun getAllComics(): List<ComicDocument> = dao.getAllComics()
+
     suspend fun getComicById(id: String): ComicDocument? = dao.getComicById(id)
 
     suspend fun findComicByFilePath(filePath: String): ComicDocument? =

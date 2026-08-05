@@ -9,6 +9,7 @@ import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
 import com.centollu.comicreader.util.ComicTitleParser
+import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ExtractedComicResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ data class LibraryUiState(
     val filterType: String = "ALL", // ALL, TITLE, AUTHOR, SERIES, PUBLISHER, ARC
     val sortType: String = "NAME", // NAME (filename asc), DATE (added desc)
     val isLoading: Boolean = false,
+    val isRescanning: Boolean = false,
     val selectedComicForCoverPicker: ComicDocument? = null,
     val extractedComicResult: ExtractedComicResult? = null,
     val isExtractingForCover: Boolean = false
@@ -131,38 +133,71 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             _uiState.value = _uiState.value.copy(isLoading = true)
             val folder = File(folderPath)
             if (folder.exists() && folder.isDirectory) {
-                val files = folder.walkTopDown().filter {
-                    it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr")
-                }.toList()
-
-                for (file in files) {
-                    val existing = repository.findComicByFilePath(file.absolutePath)
-                    if (existing == null) {
-                        val parsed = ComicTitleParser.parse(file.nameWithoutExtension)
-                        val comicDoc = ComicDocument().apply {
-                            this.filePath = file.absolutePath
-                            this.title = parsed.title
-                            this.issueNumber = parsed.issueNumber
-                        }
-
-                        // Escaneo ultrarrápido: extrae SOLO la portada en filesDir/covers/
-                        val scanResult = ComicExtractor.extractOnlyCover(
-                            context = context,
-                comicId = comicDoc._id,
-                            inputStreamProvider = { FileInputStream(file) },
-                            fileExtension = file.extension,
-                            sourceFile = file
-                        )
-
-                        comicDoc.pageCount = scanResult.pageCount
-                        comicDoc.coverFilename = scanResult.coverFilename
-
-                        repository.insertOrUpdateComic(comicDoc)
-                    }
-                }
+                AppPrefs.addScannedFolder(context, folder.absolutePath)
+                addComicFilesInFolder(context, folder)
             }
             _uiState.value = _uiState.value.copy(isLoading = false)
         }
+    }
+
+    fun rescanFolders(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isRescanning = true)
+            val folders = AppPrefs.getScannedFolders(context)
+                .map { File(it) }
+                .filter { it.exists() && it.isDirectory }
+
+            val existingOnDisk = mutableSetOf<String>()
+            for (folder in folders) {
+                existingOnDisk += addComicFilesInFolder(context, folder)
+            }
+
+            val scannedRoots = folders.map { it.absolutePath }
+            val knownComics = repository.getAllComics()
+            for (comic in knownComics) {
+                val filePath = comic.filePath
+                val isManaged = scannedRoots.any { filePath.startsWith(it) }
+                if (isManaged && !File(filePath).exists()) {
+                    ComicExtractor.deleteComicFiles(context, comic._id)
+                    repository.deleteComic(comic._id)
+                }
+            }
+            _uiState.value = _uiState.value.copy(isRescanning = false)
+        }
+    }
+
+    private suspend fun addComicFilesInFolder(context: Context, folder: File): Set<String> {
+        val addedPaths = mutableSetOf<String>()
+        val files = folder.walkTopDown().filter {
+            it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr")
+        }.toList()
+
+        for (file in files) {
+            val existing = repository.findComicByFilePath(file.absolutePath)
+            if (existing == null) {
+                val parsed = ComicTitleParser.parse(file.nameWithoutExtension)
+                val comicDoc = ComicDocument().apply {
+                    this.filePath = file.absolutePath
+                    this.title = parsed.title
+                    this.issueNumber = parsed.issueNumber
+                }
+
+                val scanResult = ComicExtractor.extractOnlyCover(
+                    context = context,
+                    comicId = comicDoc._id,
+                    inputStreamProvider = { FileInputStream(file) },
+                    fileExtension = file.extension,
+                    sourceFile = file
+                )
+
+                comicDoc.pageCount = scanResult.pageCount
+                comicDoc.coverFilename = scanResult.coverFilename
+
+                repository.insertOrUpdateComic(comicDoc)
+            }
+            addedPaths += file.absolutePath
+        }
+        return addedPaths
     }
 
     fun openCoverSelectionDialog(context: Context, comic: ComicDocument) {
