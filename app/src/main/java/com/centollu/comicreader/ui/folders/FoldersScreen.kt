@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material3.*
@@ -48,7 +48,7 @@ private fun getStorageVolumePath(volume: StorageVolume): File? {
         try {
             val path = volume.javaClass.getMethod("getPath").invoke(volume) as? String
             if (path != null) File(path) else null
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -66,7 +66,7 @@ private fun getStorageVolumes(context: Context): List<StorageVolumeInfo> {
                 isRemovable = volume.isRemovable
             )
         }.sortedWith(compareBy({ it.isRemovable }, { it.label.lowercase() }))
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         emptyList()
     }
 }
@@ -82,7 +82,7 @@ fun FoldersScreen(
 
     val storageVolumes = remember {
         val volumes = getStorageVolumes(context)
-        if (volumes.isEmpty()) {
+        volumes.ifEmpty {
             listOf(
                 StorageVolumeInfo(
                     label = "Almacenamiento interno",
@@ -90,7 +90,7 @@ fun FoldersScreen(
                     isRemovable = false
                 )
             )
-        } else volumes
+        }
     }
 
     var currentDir by remember { mutableStateOf<File?>(null) }
@@ -131,7 +131,7 @@ fun FoldersScreen(
                             backStack = backStack.dropLast(1)
                         }
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Carpeta anterior")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Carpeta anterior")
                     }
                 },
                 actions = {
@@ -279,7 +279,7 @@ private fun ComicFileRow(comicFile: File, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Icon(
-            Icons.Default.MenuBook,
+            Icons.AutoMirrored.Filled.MenuBook,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.secondary
         )
