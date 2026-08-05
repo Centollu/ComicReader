@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -77,7 +79,7 @@ fun LibraryScreen(
                         Icon(Icons.Default.Search, contentDescription = "Buscar y filtrar")
                     }
                     IconButton(onClick = { showSort = !showSort }) {
-                        Icon(Icons.Default.Sort, contentDescription = "Ordenar")
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Ordenar")
                     }
                     IconButton(onClick = { showScanDialog = true }) {
                         Icon(Icons.Default.Folder, contentDescription = "Escanear carpeta")
@@ -454,7 +456,7 @@ fun ComicGridItem(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.LightGray)
+                        Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.LightGray)
                     }
                 }
 

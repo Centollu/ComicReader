@@ -1,6 +1,7 @@
 package com.centollu.comicreader.util
 
 import android.content.Context
+import androidx.core.content.edit
 
 object AppPrefs {
     private const val PREFS_NAME = "app_prefs"
@@ -14,9 +15,9 @@ object AppPrefs {
 
     fun setGridColumns(context: Context, columns: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_GRID_COLUMNS, columns.coerceIn(1, 6))
-            .apply()
+            .edit {
+                putInt(KEY_GRID_COLUMNS, columns.coerceIn(1, 6))
+            }
     }
 
     fun getScannedFolders(context: Context): List<String> {
@@ -29,6 +30,6 @@ object AppPrefs {
         val folders = prefs.getStringSet(KEY_SCANNED_FOLDERS, emptySet())?.toMutableSet()
             ?: mutableSetOf()
         folders.add(folderPath)
-        prefs.edit().putStringSet(KEY_SCANNED_FOLDERS, folders).apply()
+        prefs.edit { putStringSet(KEY_SCANNED_FOLDERS, folders) }
     }
 }

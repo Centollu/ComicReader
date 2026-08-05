@@ -3,6 +3,7 @@ package com.centollu.comicreader.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.content.edit
 import com.github.junrar.Archive
 import com.github.junrar.rarfile.FileHeader
 import kotlinx.coroutines.Dispatchers
@@ -43,9 +44,9 @@ object ComicExtractor {
 
     fun setMaxCacheSize(context: Context, sizeBytes: Long) {
         context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_CACHE_MAX_SIZE, sizeBytes.coerceAtLeast(1L))
-            .apply()
+            .edit {
+                putLong(KEY_CACHE_MAX_SIZE, sizeBytes.coerceAtLeast(1L))
+            }
     }
 
     suspend fun getCurrentCacheSize(context: Context): Long = withContext(Dispatchers.IO) {

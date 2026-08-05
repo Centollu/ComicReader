@@ -74,9 +74,6 @@ class ComicRepository(context: Context) {
         }
     }
 
-    suspend fun getHistoryForComic(comicId: String): ReadingHistoryDocument? =
-        dao.getHistoryForComic(comicId)
-
     suspend fun deleteHistoryItem(id: String) = dao.deleteHistory(id)
 
     suspend fun clearHistory() = dao.clearHistory()
