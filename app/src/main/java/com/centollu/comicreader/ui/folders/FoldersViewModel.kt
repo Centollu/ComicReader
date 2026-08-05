@@ -52,7 +52,6 @@ class FoldersViewModel(application: Application) : AndroidViewModel(application)
             context = context,
             comicId = comicDoc._id,
             inputStreamProvider = { FileInputStream(file) },
-            fileExtension = file.extension,
             sourceFile = file
         )
 

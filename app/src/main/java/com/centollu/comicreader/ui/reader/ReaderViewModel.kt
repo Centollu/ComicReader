@@ -74,7 +74,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         if (file.exists()) FileInputStream(file)
                         else NfsManager.getInputStreamForPath(comic.filePath)
                     },
-                    fileExtension = file.extension.ifEmpty { "cbz" },
                     targetCoverFilename = comic.coverFilename,
                     sourceFile = file,
                     onPageExtracted = onPageExtracted

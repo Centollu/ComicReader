@@ -9,6 +9,7 @@ import com.github.junrar.rarfile.FileHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
@@ -36,6 +37,39 @@ object ComicExtractor {
     private const val DEFAULT_CACHE_MAX_SIZE: Long = 5L * 1024 * 1024 * 1024
 
     private val SUPPORTED_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+
+    enum class ArchiveType { ZIP, RAR, UNKNOWN }
+
+    /**
+     * Detecta el tipo de archivo leyendo los magic bytes en lugar de confiar en la extensión.
+     */
+    fun detectArchiveType(sourceFile: File?, inputStreamProvider: () -> InputStream?): ArchiveType {
+        if (sourceFile != null && sourceFile.exists()) {
+            return try {
+                FileInputStream(sourceFile).use { detectFromStream(it) }
+            } catch (_: Exception) {
+                ArchiveType.UNKNOWN
+            }
+        }
+        val stream = inputStreamProvider() ?: return ArchiveType.UNKNOWN
+        return try {
+            stream.use { detectFromStream(it) }
+        } catch (_: Exception) {
+            ArchiveType.UNKNOWN
+        }
+    }
+
+    private fun detectFromStream(stream: InputStream): ArchiveType {
+        val magic = ByteArray(4)
+        val count = stream.read(magic)
+        if (count < 4) return ArchiveType.UNKNOWN
+        val signature = magic.joinToString("") { "%02X".format(it) }
+        return when {
+            signature.startsWith("504B") -> ArchiveType.ZIP   // "PK"
+            signature.startsWith("526172") -> ArchiveType.RAR  // "Rar!"
+            else -> ArchiveType.UNKNOWN
+        }
+    }
 
     fun getMaxCacheSize(context: Context): Long {
         val prefs = context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
@@ -97,7 +131,6 @@ object ComicExtractor {
         context: Context,
         comicId: String,
         inputStreamProvider: () -> InputStream?,
-        fileExtension: String,
         targetCoverFilename: String? = null,
         sourceFile: File? = null
     ): QuickScanResult = withContext(Dispatchers.IO) {
@@ -110,9 +143,9 @@ object ComicExtractor {
 
         var pageCount = 0
         var foundCoverName = ""
-        val ext = fileExtension.lowercase()
+        val archiveType = detectArchiveType(sourceFile, inputStreamProvider)
 
-        if (ext == "cbz" || ext == "zip") {
+        if (archiveType == ArchiveType.ZIP) {
             val coverEntries = mutableListOf<String>()
             if (sourceFile != null && sourceFile.exists()) {
                 ZipFile(sourceFile).use { zipFile ->
@@ -167,7 +200,7 @@ object ComicExtractor {
                 // Fallback: use first image entry name
                 foundCoverName = SimpleFileName(coverEntries.first())
             }
-        } else if (ext == "cbr" || ext == "rar") {
+        } else if (archiveType == ArchiveType.RAR) {
             try {
                 val archive = if (sourceFile != null && sourceFile.exists()) {
                     Archive(sourceFile)
@@ -228,7 +261,6 @@ object ComicExtractor {
         context: Context,
         comicId: String,
         inputStreamProvider: () -> InputStream?,
-        fileExtension: String,
         targetCoverFilename: String? = null,
         sourceFile: File? = null,
         onPageExtracted: ((File) -> Unit)? = null
@@ -251,11 +283,11 @@ object ComicExtractor {
             }
             cacheBaseDir.mkdirs()
 
-            val ext = fileExtension.lowercase()
-            if (ext == "cbz" || ext == "zip") {
-                extractZip(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
-            } else if (ext == "cbr" || ext == "rar") {
-                extractRar(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
+            val archiveType = detectArchiveType(sourceFile, inputStreamProvider)
+            when (archiveType) {
+                ArchiveType.ZIP -> extractZip(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
+                ArchiveType.RAR -> extractRar(inputStreamProvider, cacheBaseDir, sourceFile, onPageExtracted)
+                ArchiveType.UNKNOWN -> { /* no se pudo identificar el formato */ }
             }
 
             allImages = cacheBaseDir.walkTopDown()

@@ -114,7 +114,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 context = context,
                             comicId = comicDoc._id,
                 inputStreamProvider = { FileInputStream(destFile) },
-                fileExtension = destFile.extension,
                 sourceFile = destFile
             )
 
@@ -185,7 +184,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     context = context,
                     comicId = comicDoc._id,
                     inputStreamProvider = { FileInputStream(file) },
-                    fileExtension = file.extension,
                     sourceFile = file
                 )
 
@@ -213,7 +211,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 context = context,
                 comicId = comicId,
                 inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
-                fileExtension = file.extension,
                 targetCoverFilename = comic.coverFilename,
                 sourceFile = file
             )
@@ -237,7 +234,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 context = context,
                 comicId = comicId,
                 inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
-                fileExtension = file.extension,
                 targetCoverFilename = newCoverName,
                 sourceFile = file
             )
