@@ -10,7 +10,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -21,10 +20,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +34,8 @@ import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
 import coil.compose.rememberAsyncImagePainter
 import java.io.File
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -81,10 +83,15 @@ fun ReaderScreen(
                 Text("Descomprimiendo cómic en la caché...", color = Color.White)
             }
         } else {
+            var scale by remember(comicId) { mutableStateOf(1f) }
+            var offsetX by remember(comicId) { mutableStateOf(0f) }
+            var offsetY by remember(comicId) { mutableStateOf(0f) }
+
             val pagerState = rememberPagerState(
                 initialPage = uiState.currentPageIndex.coerceIn(0, uiState.pageFiles.lastIndex),
                 pageCount = { uiState.pageFiles.size }
             )
+            val scope = rememberCoroutineScope()
 
             LaunchedEffect(pagerState.currentPage) {
                 viewModel.onPageChanged(pagerState.currentPage)
@@ -101,12 +108,46 @@ fun ReaderScreen(
 
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = scale <= 1f,
                 modifier = Modifier.fillMaxSize()
             ) { pageIndex ->
                 val imageFile = uiState.pageFiles[pageIndex]
+
                 ZoomableImage(
                     imageFile = imageFile,
-                    onTap = { showControls = !showControls }
+                    scale = scale,
+                    offsetX = offsetX,
+                    offsetY = offsetY,
+                    onScaleChange = { scale = it },
+                    onOffsetChange = { x, y ->
+                        offsetX = x
+                        offsetY = y
+                    },
+                    onPageBack = {
+                        if (pagerState.currentPage > 0) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                            }
+                        }
+                    },
+                    onPageForward = {
+                        if (pagerState.currentPage < pagerState.pageCount - 1) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            }
+                        }
+                    },
+                    onToggleControls = { showControls = !showControls },
+                    onZoom = {
+                        if (scale > 1f) {
+                            scale = 1f
+                            offsetX = 0f
+                            offsetY = 0f
+                        } else {
+                            scale = 2.5f
+                        }
+                    },
+                    scope = scope
                 )
             }
 
@@ -193,54 +234,142 @@ fun ReaderScreen(
 @Composable
 fun ZoomableImage(
     imageFile: File,
-    onTap: () -> Unit
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    onScaleChange: (Float) -> Unit,
+    onOffsetChange: (x: Float, y: Float) -> Unit,
+    onPageBack: () -> Unit,
+    onPageForward: () -> Unit,
+    onToggleControls: () -> Unit,
+    onZoom: () -> Unit,
+    scope: kotlinx.coroutines.CoroutineScope
 ) {
-    var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    // rememberUpdatedState: evita que el gesto lea valores "stale" al recomponer
+    val currentScale by rememberUpdatedState(scale)
+    val currentOffsetX by rememberUpdatedState(offsetX)
+    val currentOffsetY by rememberUpdatedState(offsetY)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onDoubleTap = {
-                        if (scale > 1f) {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
-                        } else {
-                            scale = 2.5f
-                        }
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                // Solo consume gestos cuando está ampliado; con zoom normal deja
-                // que el HorizontalPager reciba los gestos para cambiar de página.
+            .pointerInput(imageFile) {
+                val touchSlop = viewConfiguration.touchSlop * 2
+                val doubleTapTimeout = viewConfiguration.doubleTapTimeoutMillis
+                val cornerRadius = size.width * 0.30f
+                val centerRadius = size.width * 0.30f
+                var lastTapAt = 0L
+                var lastTap: Offset? = null
+
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downId = down.id
+                    var upPos: Offset? = null
+                    var upTime = 0L
+                    var isTap = true
+
                     while (true) {
                         val event = awaitPointerEvent()
-                        val pressed = event.changes.fastAny { it.pressed }
-                        val canceled = event.changes.fastAny { it.isConsumed }
-                        if (!pressed || canceled) break
+                        val pressedChanges = event.changes.filter { it.pressed }
 
-                        val zoomChange = event.calculateZoom()
-                        val panChange = event.calculatePan()
-                        val newScale = (scale * zoomChange).coerceIn(1f, 4f)
-
-                        if (newScale > 1f) {
-                            event.changes.fastForEach { if (it.positionChanged()) it.consume() }
-                            scale = newScale
-                            offsetX += panChange.x
-                            offsetY += panChange.y
+                        when (pressedChanges.size) {
+                            0 -> {
+                                val up = event.changes.firstOrNull { it.id == downId }
+                                if (up != null) {
+                                    upPos = up.position
+                                    upTime = up.uptimeMillis
+                                    up.consume()
+                                }
+                                break
+                            }
+                            1 -> {
+                                val change = event.changes.firstOrNull { it.id == downId }
+                                    ?: pressedChanges.firstOrNull()
+                                    ?: break
+                                if (currentScale > 1f) {
+                                    // Con zoom: un dedo desplaza la página sin cambiar de página
+                                    val pan = change.positionChange()
+                                    change.consume()
+                                    onOffsetChange(currentOffsetX + pan.x, currentOffsetY + pan.y)
+                                    isTap = false
+                                } else {
+                                    // Sin zoom: un dedo deja que el pager cambie de página
+                                    if (change.positionChange().getDistance() > touchSlop) {
+                                        isTap = false
+                                    }
+                                }
+                            }
+                            else -> {
+                                // Pinch (2 o más dedos): agrandar / reducir y mover
+                                isTap = false
+                                try {
+                                    val zoomChange = event.calculateZoom()
+                                    val panChange = event.calculatePan()
+                                    // Error handling: ignora deltas no finitos (NaN/∞) que provocan saltos
+                                    if (!zoomChange.isFinite() || !panChange.x.isFinite() || !panChange.y.isFinite()) {
+                                        continue
+                                    }
+                                    event.changes.fastForEach { it.consume() }
+                                    val newScale = (currentScale * zoomChange).coerceIn(1f, 8f)
+                                    onScaleChange(newScale)
+                                    onOffsetChange(currentOffsetX + panChange.x, currentOffsetY + panChange.y)
+                                } catch (e: Exception) {
+                                    // Error handling: ignora eventos de pinch inválidos y sigue el gesto
+                                }
+                            }
                         }
                     }
-                    if (scale <= 1f) {
-                        offsetX = 0f
-                        offsetY = 0f
+
+                    val up = upPos
+                    if (isTap && up != null) {
+                        val upDy = size.height - up.y
+                        val inBottomLeft =
+                            (up.x * up.x + upDy * upDy) <= cornerRadius * cornerRadius
+                        val inBottomRight =
+                            ((size.width - up.x) * (size.width - up.x) + upDy * upDy) <= cornerRadius * cornerRadius
+                        val dxCenter = up.x - size.width / 2f
+                        val dyCenter = up.y - size.height / 2f
+                        val inCenter =
+                            (dxCenter * dxCenter + dyCenter * dyCenter) <= centerRadius * centerRadius
+                        val zoomed = currentScale > 1f
+
+                        val isDoubleTap = lastTap != null &&
+                            (upTime - lastTapAt) <= doubleTapTimeout
+                        lastTapAt = upTime
+                        lastTap = up
+
+                        when {
+                            // Cambio de página por esquinas solo cuando NO hay zoom
+                            !zoomed && inBottomLeft -> {
+                                lastTap = null
+                                onPageBack()
+                            }
+                            !zoomed && inBottomRight -> {
+                                lastTap = null
+                                onPageForward()
+                            }
+                            // Con zoom: doble tap reinicia; sin zoom solo en el centro: hace zoom in
+                            isDoubleTap && (zoomed || inCenter) -> {
+                                lastTap = null
+                                onZoom()
+                            }
+                            !isDoubleTap -> {
+                                // Tap simple: alternar controles, esperando por si llega un doble tap
+                                scope.launch {
+                                    delay(doubleTapTimeout)
+                                    if (lastTap == up) {
+                                        lastTap = null
+                                        onToggleControls()
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        lastTap = null
+                    }
+
+                    if (currentScale <= 1f) {
+                        onOffsetChange(0f, 0f)
                     }
                 }
             },
