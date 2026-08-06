@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
+import com.centollu.comicreader.util.ComicInfoFields
+import com.centollu.comicreader.util.ComicInfoParser
 import com.centollu.comicreader.util.ComicTitleParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +67,21 @@ class FoldersViewModel(application: Application) : AndroidViewModel(application)
 
         comicDoc.pageCount = scanResult.pageCount
         comicDoc.coverFilename = scanResult.coverFilename
+
+        try {
+            val xml = ComicExtractor.readComicInfoXml(
+                sourceFile = file,
+                inputStreamProvider = { FileInputStream(file) }
+            )
+            if (xml != null) {
+                val fields = ComicInfoParser.parse(xml)
+                if (fields != ComicInfoFields()) {
+                    ComicInfoParser.applyTo(comicDoc, fields)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         repository.insertOrUpdateComic(comicDoc)
         return comicDoc

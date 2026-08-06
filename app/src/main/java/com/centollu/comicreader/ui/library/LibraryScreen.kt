@@ -57,6 +57,7 @@ fun LibraryScreen(
     val gridColumns = remember { AppPrefs.getGridColumns(context) }
 
     var showScanDialog by remember { mutableStateOf(false) }
+    var showRefreshDialog by remember { mutableStateOf(false) }
     var editingComicMetadata by remember { mutableStateOf<ComicDocument?>(null) }
     var showSearchFilters by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
@@ -78,7 +79,7 @@ fun LibraryScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
                 actions = {
-                    IconButton(onClick = { viewModel.rescanFolders(context) }) {
+                    IconButton(onClick = { showRefreshDialog = true }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Volver a escanear carpetas")
                     }
                     IconButton(onClick = { showSearchFilters = !showSearchFilters }) {
@@ -206,6 +207,33 @@ fun LibraryScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
+            } else if (uiState.isUpdatingMetadata) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Actualizando metadatos desde ComicInfo.xml...",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(
+                            progress = { uiState.metadataProgress / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "${uiState.metadataProgress}%  ·  ETA ${uiState.metadataEta ?: "..."}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             } else if (uiState.isRescanning) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -249,6 +277,51 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+
+    // Dialog: Refresh options
+    if (showRefreshDialog) {
+        AlertDialog(
+            onDismissRequest = { showRefreshDialog = false },
+            title = { Text("Actualizar biblioteca") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "¿Qué deseas hacer?",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = {
+                            showRefreshDialog = false
+                            viewModel.rescanFolders(context)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Buscar novedades")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showRefreshDialog = false
+                            viewModel.updateAllMetadata(context)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Actualizar metadatos de todos los cómics")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showRefreshDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     // Dialog: Scan directory

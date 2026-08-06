@@ -8,10 +8,12 @@ import com.github.junrar.Archive
 import com.github.junrar.rarfile.FileHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.Enumeration
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
@@ -38,6 +40,7 @@ object ComicExtractor {
     private const val DEFAULT_CACHE_MAX_SIZE: Long = 5L * 1024 * 1024 * 1024
 
     private const val PARTIAL_MARKER_FILENAME = ".partial-extraction"
+    private const val COMIC_INFO_FILENAME = "ComicInfo.xml"
     const val COVER_PREVIEW_MAX_PAGES = 6
 
     private val SUPPORTED_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
@@ -284,6 +287,80 @@ object ComicExtractor {
     }
 
     /**
+     * Intenta leer el contenido del fichero ComicInfo.xml del archivo (CBZ/CBR),
+     * devolviendo el XML en bruto o null si no existe o no se puede leer.
+     */
+    fun readComicInfoXml(sourceFile: File?, inputStreamProvider: () -> InputStream?): String? {
+        val archiveType = detectArchiveType(sourceFile, inputStreamProvider)
+        return try {
+            when (archiveType) {
+                ArchiveType.ZIP -> readZipComicInfo(sourceFile, inputStreamProvider)
+                ArchiveType.RAR -> readRarComicInfo(sourceFile, inputStreamProvider)
+                ArchiveType.UNKNOWN -> null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun readZipComicInfo(sourceFile: File?, inputStreamProvider: () -> InputStream?): String? {
+        if (sourceFile != null && sourceFile.exists()) {
+            ZipFile(sourceFile).use { zipFile ->
+                val entry = findZipEntry(zipFile.entries(), COMIC_INFO_FILENAME)
+                if (entry != null) {
+                    return zipFile.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
+                }
+            }
+            return null
+        }
+        val stream = inputStreamProvider() ?: return null
+        return ZipInputStream(stream).use { zipStream ->
+            var entry: ZipEntry? = zipStream.nextEntry
+            while (entry != null) {
+                if (entry.name.substringAfterLast('/').equals(COMIC_INFO_FILENAME, ignoreCase = true)) {
+                    return@use zipStream.readBytes().toString(Charsets.UTF_8)
+                }
+                zipStream.closeEntry()
+                entry = zipStream.nextEntry
+            }
+            null
+        }
+    }
+
+    private fun readRarComicInfo(sourceFile: File?, inputStreamProvider: () -> InputStream?): String? {
+        val archive = if (sourceFile != null && sourceFile.exists()) {
+            Archive(sourceFile)
+        } else {
+            Archive(inputStreamProvider() ?: return null)
+        }
+        var xml: String? = null
+        try {
+            var header: FileHeader? = archive.nextFileHeader()
+            while (header != null) {
+                if (header.fileName.substringAfterLast('/').equals(COMIC_INFO_FILENAME, ignoreCase = true)) {
+                    val bytes = ByteArrayOutputStream()
+                    archive.extractFile(header, bytes)
+                    xml = bytes.toString(Charsets.UTF_8.name())
+                    break
+                }
+                header = archive.nextFileHeader()
+            }
+        } finally {
+            archive.close()
+        }
+        return xml
+    }
+
+    private fun findZipEntry(entries: Enumeration<out ZipEntry>, filename: String): ZipEntry? {
+        while (entries.hasMoreElements()) {
+            val entry = entries.nextElement()
+            if (entry.name.substringAfterLast('/').equals(filename, ignoreCase = true)) return entry
+        }
+        return null
+    }
+
+    /**
      * Descompresión completa de todas las páginas cuando el usuario abre el cómic para leer.
      * Si [maxPages] se especifica, solo se extraen las primeras N páginas (extracción parcial),
      * marcada con un fichero de marcador para poder ampliarla después.
@@ -380,24 +457,43 @@ object ComicExtractor {
         var extractedCount = 0
         try {
             if (sourceFile != null && sourceFile.exists()) {
+                // Pasada 1: listar imágenes para determinar cuáles conservar (las PRIMERAS)
+                val imageNames = mutableListOf<String>()
                 ZipFile(sourceFile).use { zipFile ->
                     val entries = zipFile.entries()
                     while (entries.hasMoreElements()) {
-                        if (maxPages != null && extractedCount >= maxPages) break
                         val entry = entries.nextElement()
                         if (!entry.isDirectory && isSupportedImage(entry.name)) {
-                            extractZipEntry(
-                                input = { zipFile.getInputStream(entry) },
-                                entryName = entry.name,
-                                outputDir = outputDir,
-                                usedNames = usedNames,
-                                onPageExtracted = onPageExtracted
-                            )
-                            extractedCount++
+                            imageNames.add(entry.name)
+                        }
+                    }
+                }
+
+                val keepIndices = leadingIndices(imageNames, maxPages)
+
+                // Pasada 2: extraer solo las conservadas
+                ZipFile(sourceFile).use { zipFile ->
+                    val entries = zipFile.entries()
+                    var idx = 0
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (!entry.isDirectory && isSupportedImage(entry.name)) {
+                            if (keepIndices == null || idx in keepIndices) {
+                                extractZipEntry(
+                                    input = { zipFile.getInputStream(entry) },
+                                    entryName = entry.name,
+                                    outputDir = outputDir,
+                                    usedNames = usedNames,
+                                    onPageExtracted = onPageExtracted
+                                )
+                                extractedCount++
+                            }
+                            idx++
                         }
                     }
                 }
             } else {
+                // Flujo de transmisión sin fichero: no es posible retroceder, se extrae desde el inicio (fallback).
                 val stream = inputStreamProvider() ?: return
                 ZipInputStream(stream).use { zipStream ->
                     var entry: ZipEntry? = zipStream.nextEntry
@@ -452,33 +548,89 @@ object ComicExtractor {
         val usedNames = mutableSetOf<String>()
         var extractedCount = 0
         try {
-            val archive = if (sourceFile != null && sourceFile.exists()) {
-                Archive(sourceFile)
-            } else {
-                val stream = inputStreamProvider() ?: return
-                Archive(stream)
-            }
-            var header: FileHeader? = archive.nextFileHeader()
-            while (header != null) {
-                if (maxPages != null && extractedCount >= maxPages) break
-                if (!header.isDirectory && isSupportedImage(header.fileName)) {
-                    try {
-                        val outputFile = File(outputDir, uniqueFileName(SimpleFileName(header.fileName), usedNames))
-                        FileOutputStream(outputFile).use { out ->
-                            archive.extractFile(header, out)
-                        }
-                        onPageExtracted?.invoke(outputFile)
-                        extractedCount++
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+            if (sourceFile != null && sourceFile.exists()) {
+                // Pasada 1: listar imágenes para determinar cuáles conservar (las PRIMERAS)
+                val imageNames = mutableListOf<String>()
+                val countArchive = Archive(sourceFile)
+                var countHeader = countArchive.nextFileHeader()
+                while (countHeader != null) {
+                    if (!countHeader.isDirectory && isSupportedImage(countHeader.fileName)) {
+                        imageNames.add(countHeader.fileName)
                     }
+                    countHeader = countArchive.nextFileHeader()
                 }
-                header = archive.nextFileHeader()
+                countArchive.close()
+
+                val keepIndices = leadingIndices(imageNames, maxPages)
+
+                // Pasada 2: extraer solo las conservadas
+                val archive = Archive(sourceFile)
+                var header = archive.nextFileHeader()
+                var idx = 0
+                while (header != null) {
+                    if (!header.isDirectory && isSupportedImage(header.fileName)) {
+                        if (keepIndices == null || idx in keepIndices) {
+                            try {
+                                val outputFile = File(outputDir, uniqueFileName(SimpleFileName(header.fileName), usedNames))
+                                FileOutputStream(outputFile).use { out ->
+                                    archive.extractFile(header, out)
+                                }
+                                onPageExtracted?.invoke(outputFile)
+                                extractedCount++
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                        idx++
+                    }
+                    header = archive.nextFileHeader()
+                }
+                archive.close()
+            } else {
+                // Flujo de transmisión sin fichero: no es posible retroceder, se extrae desde el inicio (fallback).
+                val stream = inputStreamProvider() ?: return
+                val archive = Archive(stream)
+                var header = archive.nextFileHeader()
+                while (header != null) {
+                    if (maxPages != null && extractedCount >= maxPages) break
+                    if (!header.isDirectory && isSupportedImage(header.fileName)) {
+                        try {
+                            val outputFile = File(outputDir, uniqueFileName(SimpleFileName(header.fileName), usedNames))
+                            FileOutputStream(outputFile).use { out ->
+                                archive.extractFile(header, out)
+                            }
+                            onPageExtracted?.invoke(outputFile)
+                            extractedCount++
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    header = archive.nextFileHeader()
+                }
+                archive.close()
             }
-            archive.close()
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Dado el listado de imágenes en orden de archivo, devuelve los índices que deben
+     * conservarse: las primeras [maxPages] páginas en orden natural. Si [maxPages] es null,
+     * devuelve null (conservar todas).
+     */
+    private fun leadingIndices(imageNames: List<String>, maxPages: Int?): Set<Int>? {
+        if (maxPages == null) return null
+        if (imageNames.isEmpty()) return emptySet()
+        val naturalOrder = imageNames.indices.sortedWith(
+            compareBy(NATURAL_STRING_COMPARATOR) { imageNames[it] }
+        )
+        val keepCount = if (imageNames.size <= maxPages) imageNames.size else maxPages
+        return naturalOrder.take(keepCount).toSet()
+    }
+
+    private val NATURAL_STRING_COMPARATOR = Comparator<String> { a, b ->
+        NaturalOrderComparator().compare(File(a), File(b))
     }
 
     private fun SimpleFileName(path: String): String {

@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.centollu.comicreader.data.model.ComicDocument
 import com.centollu.comicreader.data.repository.ComicRepository
 import com.centollu.comicreader.util.ComicExtractor
+import com.centollu.comicreader.util.ComicInfoFields
+import com.centollu.comicreader.util.ComicInfoParser
 import com.centollu.comicreader.util.ComicTitleParser
 import com.centollu.comicreader.util.AppPrefs
 import com.centollu.comicreader.util.ExtractedComicResult
@@ -27,6 +29,9 @@ data class LibraryUiState(
     val sortType: String = "NAME", // NAME (filename asc), PATH (ruta asc), DATE (added desc)
     val isLoading: Boolean = false,
     val isRescanning: Boolean = false,
+    val isUpdatingMetadata: Boolean = false,
+    val metadataProgress: Int = 0,
+    val metadataEta: String? = null,
     val selectedComicForCoverPicker: ComicDocument? = null,
     val extractedComicResult: ExtractedComicResult? = null,
     val isExtractingForCover: Boolean = false,
@@ -128,6 +133,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 comicDoc.pageCount = scanResult.pageCount
                 comicDoc.coverFilename = scanResult.coverFilename
 
+                applyComicInfoMetadata(destFile, comicDoc)
+
                 repository.insertOrUpdateComic(comicDoc)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -195,6 +202,71 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateAllMetadata(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(
+                isUpdatingMetadata = true,
+                metadataProgress = 0,
+                metadataEta = null,
+                errorMessage = null
+            )
+            try {
+                val comics = repository.getAllComics()
+                val total = comics.size
+                val startTime = System.currentTimeMillis()
+                var processed = 0
+
+                for (comic in comics) {
+                    try {
+                        val file = File(comic.filePath)
+                        if (file.exists()) {
+                            val xml = ComicExtractor.readComicInfoXml(
+                                sourceFile = file,
+                                inputStreamProvider = { FileInputStream(file) }
+                            )
+                            if (xml != null) {
+                                val fields = ComicInfoParser.parse(xml)
+                                if (fields != ComicInfoFields()) {
+                                    ComicInfoParser.applyTo(comic, fields)
+                                    repository.insertOrUpdateComic(comic)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                    processed++
+                    val elapsed = System.currentTimeMillis() - startTime
+                    val percent = if (total > 0) processed * 100 / total else 100
+                    val remaining = total - processed
+                    val etaSeconds = if (processed > 0 && remaining > 0) {
+                        (remaining * (elapsed.toDouble() / processed) / 1000.0).toLong()
+                    } else {
+                        0L
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        metadataProgress = percent.coerceIn(0, 100),
+                        metadataEta = formatEta(etaSeconds)
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Error al actualizar metadatos: ${e.message}"
+                )
+            }
+            _uiState.value = _uiState.value.copy(isUpdatingMetadata = false)
+        }
+    }
+
+    private fun formatEta(seconds: Long): String {
+        val safeSeconds = seconds.coerceAtLeast(0L)
+        val minutes = safeSeconds / 60
+        val secs = safeSeconds % 60
+        return if (minutes > 0) "${minutes}m ${secs}s" else "${secs}s"
+    }
+
     private suspend fun addComicFilesInFolder(context: Context, folder: File): Set<String> {
         val addedPaths = mutableSetOf<String>()
         val files = try {
@@ -227,6 +299,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     comicDoc.pageCount = scanResult.pageCount
                     comicDoc.coverFilename = scanResult.coverFilename
 
+                    applyComicInfoMetadata(file, comicDoc)
+
                     repository.insertOrUpdateComic(comicDoc)
                 }
                 addedPaths += file.absolutePath
@@ -236,6 +310,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         return addedPaths
+    }
+
+    private fun applyComicInfoMetadata(sourceFile: File, comicDoc: ComicDocument) {
+        try {
+            val xml = ComicExtractor.readComicInfoXml(
+                sourceFile = sourceFile,
+                inputStreamProvider = { FileInputStream(sourceFile) }
+            ) ?: return
+            val fields = ComicInfoParser.parse(xml)
+            if (fields != ComicInfoFields()) {
+                ComicInfoParser.applyTo(comicDoc, fields)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun openCoverSelectionDialog(context: Context, comic: ComicDocument) {
