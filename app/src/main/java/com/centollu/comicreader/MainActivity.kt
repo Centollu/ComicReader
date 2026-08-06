@@ -7,11 +7,13 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.FolderOpen
@@ -124,7 +126,12 @@ fun MainAppContent() {
 
     val screens = listOf(Screen.Library, Screen.History, Screen.Folders, Screen.Settings)
 
+    val libraryGridState = rememberLazyGridState()
+
     if (activeReadingComicId != null) {
+        BackHandler {
+            activeReadingComicId = null
+        }
         ReaderScreen(
             viewModel = readerViewModel,
             comicId = activeReadingComicId!!,
@@ -150,6 +157,7 @@ fun MainAppContent() {
                 when (currentTab) {
                     Screen.Library -> LibraryScreen(
                         viewModel = libraryViewModel,
+                        gridState = libraryGridState,
                         onComicSelected = { comic ->
                             activeReadingInitialPage = 0
                             activeReadingComicId = comic._id
