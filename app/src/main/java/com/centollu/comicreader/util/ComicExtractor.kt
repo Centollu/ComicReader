@@ -309,7 +309,7 @@ object ComicExtractor {
             ZipFile(sourceFile).use { zipFile ->
                 val entry = findZipEntry(zipFile.entries(), COMIC_INFO_FILENAME)
                 if (entry != null) {
-                    return zipFile.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
+                    return decodeXml(zipFile.getInputStream(entry).use { it.readBytes() })
                 }
             }
             return null
@@ -318,8 +318,8 @@ object ComicExtractor {
         return ZipInputStream(stream).use { zipStream ->
             var entry: ZipEntry? = zipStream.nextEntry
             while (entry != null) {
-                if (entry.name.substringAfterLast('/').equals(COMIC_INFO_FILENAME, ignoreCase = true)) {
-                    return@use zipStream.readBytes().toString(Charsets.UTF_8)
+                if (isComicInfoEntry(entry.name)) {
+                    return@use decodeXml(zipStream.readBytes())
                 }
                 zipStream.closeEntry()
                 entry = zipStream.nextEntry
@@ -338,10 +338,10 @@ object ComicExtractor {
         try {
             var header: FileHeader? = archive.nextFileHeader()
             while (header != null) {
-                if (header.fileName.substringAfterLast('/').equals(COMIC_INFO_FILENAME, ignoreCase = true)) {
+                if (isComicInfoEntry(header.fileName)) {
                     val bytes = ByteArrayOutputStream()
                     archive.extractFile(header, bytes)
-                    xml = bytes.toString(Charsets.UTF_8.name())
+                    xml = decodeXml(bytes.toByteArray())
                     break
                 }
                 header = archive.nextFileHeader()
@@ -355,9 +355,26 @@ object ComicExtractor {
     private fun findZipEntry(entries: Enumeration<out ZipEntry>, filename: String): ZipEntry? {
         while (entries.hasMoreElements()) {
             val entry = entries.nextElement()
-            if (entry.name.substringAfterLast('/').equals(filename, ignoreCase = true)) return entry
+            if (entry.name.replace('\\', '/').substringAfterLast('/').equals(filename, ignoreCase = true)) return entry
         }
         return null
+    }
+
+    private fun isComicInfoEntry(entryName: String): Boolean {
+        return entryName.replace('\\', '/').substringAfterLast('/').equals(COMIC_INFO_FILENAME, ignoreCase = true)
+    }
+
+    private fun decodeXml(bytes: ByteArray): String {
+        return try {
+            if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+                String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+            } else {
+                String(bytes, Charsets.UTF_8)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
+        }
     }
 
     /**

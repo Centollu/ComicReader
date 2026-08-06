@@ -32,19 +32,26 @@ object ComicInfoParser {
             var penciller: String? = null
             var storyArc: String? = null
 
+            var currentTag: String? = null
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
-                if (event == XmlPullParser.START_TAG) {
-                    val value = parser.nextText().trim().ifEmpty { null }
-                    when (parser.name) {
-                        "Title" -> title = value
-                        "Series" -> series = value
-                        "Number" -> number = value?.toIntOrNull()
-                        "Publisher" -> publisher = value
-                        "Writer" -> writer = value
-                        "Penciller" -> penciller = value
-                        "StoryArc" -> storyArc = value
+                when (event) {
+                    XmlPullParser.START_TAG -> currentTag = parser.name
+                    XmlPullParser.TEXT -> {
+                        if (currentTag != null) {
+                            val text = parser.text.trim().ifEmpty { null }
+                            when (currentTag) {
+                                "Title" -> title = text
+                                "Series" -> series = text
+                                "Number" -> number = text?.toIntOrNull()
+                                "Publisher" -> publisher = text
+                                "Writer" -> writer = text
+                                "Penciller" -> penciller = text
+                                "StoryArc" -> storyArc = text
+                            }
+                        }
                     }
+                    XmlPullParser.END_TAG -> currentTag = null
                 }
                 event = parser.next()
             }
