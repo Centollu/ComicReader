@@ -28,22 +28,35 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     private fun loadHistory() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            repository.getReadingHistoryFlow().collect { historyList ->
-                _uiState.value = HistoryUiState(historyItems = historyList, isLoading = false)
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+                repository.getReadingHistoryFlow().collect { historyList ->
+                    _uiState.value = HistoryUiState(historyItems = historyList, isLoading = false)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
     }
 
     fun deleteHistoryItem(id: String) {
         viewModelScope.launch {
-            repository.deleteHistoryItem(id)
+            try {
+                repository.deleteHistoryItem(id)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun clearHistory() {
         viewModelScope.launch {
-            repository.clearHistory()
+            try {
+                repository.clearHistory()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

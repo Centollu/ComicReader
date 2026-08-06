@@ -155,6 +155,22 @@ fun FoldersScreen(
                 }
             }
 
+            if (uiState.errorMessage != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = uiState.errorMessage!!,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             if (uiState.isOpeningComic) {
                 Box(
                     modifier = Modifier

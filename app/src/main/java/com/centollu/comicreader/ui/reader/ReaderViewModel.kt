@@ -81,6 +81,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
                 val startPage = if (initialPageIndex in result.pageFiles.indices) initialPageIndex else 0
 
+                if (result.pageFiles.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        comic = comic,
+                        pageFiles = emptyList(),
+                        currentPageIndex = 0,
+                        isLoading = false,
+                        errorMessage = "No se pudieron extraer páginas (formato no soportado o archivo dañado)."
+                    )
+                    return@launch
+                }
+
                 _uiState.value = _uiState.value.copy(
                     comic = comic,
                     pageFiles = result.pageFiles,
@@ -115,14 +126,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val comicId = comic._id
 
         viewModelScope.launch(Dispatchers.IO) {
-            repository.saveReadingProgress(
-                comicId = comicId,
-                filePath = comic.filePath,
-                title = comic.title,
-                coverPath = comic.coverFilename,
-                pageIndex = pageIndex,
-                totalPages = total
-            )
+            try {
+                repository.saveReadingProgress(
+                    comicId = comicId,
+                    filePath = comic.filePath,
+                    title = comic.title,
+                    coverPath = comic.coverFilename,
+                    pageIndex = pageIndex,
+                    totalPages = total
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

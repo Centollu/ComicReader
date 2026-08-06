@@ -186,6 +186,22 @@ fun LibraryScreen(
                 }
             }
 
+            if (uiState.errorMessage != null) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = uiState.errorMessage!!,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -304,6 +320,7 @@ fun LibraryScreen(
             onCoverSelected = { selectedFile ->
                 viewModel.setSelectedCover(context, selectedFile)
             },
+            onLoadAll = { viewModel.loadAllCoverPages(context) },
             onDismiss = { viewModel.closeCoverSelectionDialog() }
         )
     }
@@ -646,6 +663,7 @@ fun ComicGridItem(
 fun CoverSelectorDialog(
     uiState: LibraryUiState,
     onCoverSelected: (File) -> Unit,
+    onLoadAll: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -715,6 +733,17 @@ fun CoverSelectorDialog(
                                         }
                                     }
                                 }
+                            }
+                        }
+                        if (extracted.isPartial) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            TextButton(
+                                onClick = onLoadAll,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Cargar todas las páginas restantes")
                             }
                         }
                     }

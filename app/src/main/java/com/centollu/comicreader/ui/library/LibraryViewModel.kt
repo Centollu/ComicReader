@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 
 data class LibraryUiState(
     val comics: List<ComicDocument> = emptyList(),
@@ -28,12 +29,14 @@ data class LibraryUiState(
     val isRescanning: Boolean = false,
     val selectedComicForCoverPicker: ComicDocument? = null,
     val extractedComicResult: ExtractedComicResult? = null,
-    val isExtractingForCover: Boolean = false
+    val isExtractingForCover: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = ComicRepository(application.applicationContext)
+    private val appContext = application.applicationContext
+    private val repository = ComicRepository(appContext)
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -92,48 +95,68 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun addComicFromFile(context: Context, fileUri: Uri, fileName: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            try {
+                val destFile = File(context.filesDir, fileName)
+                val input = context.contentResolver.openInputStream(fileUri)
+                if (input == null) {
+                    throw IOException("No se pudo abrir el archivo seleccionado.")
+                }
+                input.use { source ->
+                    destFile.outputStream().use { output -> source.copyTo(output) }
+                }
 
-            val destFile = File(context.filesDir, fileName)
-            context.contentResolver.openInputStream(fileUri)?.use { input ->
-                destFile.outputStream().use { output -> input.copyTo(output) }
+                val parsed = ComicTitleParser.parse(fileName.substringBeforeLast('.'))
+                val comicDoc = ComicDocument().apply {
+                    this.filePath = destFile.absolutePath
+                    this.title = parsed.title
+                    this.issueNumber = parsed.issueNumber
+                    this.series = ""
+                    this.authors = ""
+                    this.publisher = ""
+                    this.storyArc = ""
+                }
+
+                // Escaneo rápido: extrae SOLO la portada y calcula el total de páginas
+                val scanResult = ComicExtractor.extractOnlyCover(
+                    context = context,
+                    comicId = comicDoc._id,
+                    inputStreamProvider = { FileInputStream(destFile) },
+                    sourceFile = destFile
+                )
+
+                comicDoc.pageCount = scanResult.pageCount
+                comicDoc.coverFilename = scanResult.coverFilename
+
+                repository.insertOrUpdateComic(comicDoc)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "No se pudo añadir el cómic: ${e.message}"
+                )
             }
-
-            val parsed = ComicTitleParser.parse(fileName.substringBeforeLast('.'))
-            val comicDoc = ComicDocument().apply {
-                this.filePath = destFile.absolutePath
-                this.title = parsed.title
-                this.issueNumber = parsed.issueNumber
-                this.series = ""
-                this.authors = ""
-                this.publisher = ""
-                this.storyArc = ""
-            }
-
-            // Escaneo rápido: extrae SOLO la portada y calcula el total de páginas
-            val scanResult = ComicExtractor.extractOnlyCover(
-                context = context,
-                            comicId = comicDoc._id,
-                inputStreamProvider = { FileInputStream(destFile) },
-                sourceFile = destFile
-            )
-
-            comicDoc.pageCount = scanResult.pageCount
-            comicDoc.coverFilename = scanResult.coverFilename
-
-            repository.insertOrUpdateComic(comicDoc)
-
             _uiState.value = _uiState.value.copy(isLoading = false)
         }
     }
 
     fun scanLocalPath(context: Context, folderPath: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            val folder = File(folderPath)
-            if (folder.exists() && folder.isDirectory) {
-                AppPrefs.addScannedFolder(context, folder.absolutePath)
-                addComicFilesInFolder(context, folder)
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            try {
+                val folder = File(folderPath)
+                if (folder.exists() && folder.isDirectory) {
+                    AppPrefs.addScannedFolder(context, folder.absolutePath)
+                    addComicFilesInFolder(context, folder)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "La carpeta no existe o no es un directorio."
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Error al escanear la carpeta: ${e.message}"
+                )
             }
             _uiState.value = _uiState.value.copy(isLoading = false)
         }
@@ -141,25 +164,32 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun rescanFolders(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isRescanning = true)
-            val folders = AppPrefs.getScannedFolders(context)
-                .map { File(it) }
-                .filter { it.exists() && it.isDirectory }
+            _uiState.value = _uiState.value.copy(isRescanning = true, errorMessage = null)
+            try {
+                val folders = AppPrefs.getScannedFolders(context)
+                    .map { File(it) }
+                    .filter { it.exists() && it.isDirectory }
 
-            val existingOnDisk = mutableSetOf<String>()
-            for (folder in folders) {
-                existingOnDisk += addComicFilesInFolder(context, folder)
-            }
-
-            val scannedRoots = folders.map { it.absolutePath }
-            val knownComics = repository.getAllComics()
-            for (comic in knownComics) {
-                val filePath = comic.filePath
-                val isManaged = scannedRoots.any { filePath.startsWith(it) }
-                if (isManaged && !File(filePath).exists()) {
-                    ComicExtractor.deleteComicFiles(context, comic._id)
-                    repository.deleteComic(comic._id)
+                val existingOnDisk = mutableSetOf<String>()
+                for (folder in folders) {
+                    existingOnDisk += addComicFilesInFolder(context, folder)
                 }
+
+                val scannedRoots = folders.map { it.absolutePath }
+                val knownComics = repository.getAllComics()
+                for (comic in knownComics) {
+                    val filePath = comic.filePath
+                    val isManaged = scannedRoots.any { filePath.startsWith(it) }
+                    if (isManaged && !File(filePath).exists()) {
+                        ComicExtractor.deleteComicFiles(context, comic._id)
+                        repository.deleteComic(comic._id)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Error al volver a escanear: ${e.message}"
+                )
             }
             _uiState.value = _uiState.value.copy(isRescanning = false)
         }
@@ -167,9 +197,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun addComicFilesInFolder(context: Context, folder: File): Set<String> {
         val addedPaths = mutableSetOf<String>()
-        val files = folder.walkTopDown().filter {
-            it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr")
-        }.toList()
+        val files = try {
+            folder.walkTopDown().filter {
+                it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr")
+            }.toList()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
 
         for (file in files) {
             try {
@@ -213,38 +248,76 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             val file = File(comic.filePath)
             val comicId = comic._id
 
-            val result = ComicExtractor.extractComic(
-                context = context,
-                comicId = comicId,
-                inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
-                targetCoverFilename = comic.coverFilename,
-                sourceFile = file
-            )
+            try {
+                val result = ComicExtractor.extractComic(
+                    context = context,
+                    comicId = comicId,
+                    inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
+                    targetCoverFilename = comic.coverFilename,
+                    sourceFile = file,
+                    maxPages = ComicExtractor.COVER_PREVIEW_MAX_PAGES
+                )
 
-            _uiState.value = _uiState.value.copy(
-                extractedComicResult = result,
-                isExtractingForCover = false
-            )
+                _uiState.value = _uiState.value.copy(
+                    extractedComicResult = result,
+                    isExtractingForCover = false
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    selectedComicForCoverPicker = null,
+                    isExtractingForCover = false
+                )
+            }
+        }
+    }
+
+    fun loadAllCoverPages(context: Context) {
+        val comic = _uiState.value.selectedComicForCoverPicker ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isExtractingForCover = true)
+            val file = File(comic.filePath)
+            try {
+                val result = ComicExtractor.extractComic(
+                    context = context,
+                    comicId = comic._id,
+                    inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
+                    targetCoverFilename = comic.coverFilename,
+                    sourceFile = file,
+                    maxPages = null
+                )
+                _uiState.value = _uiState.value.copy(
+                    extractedComicResult = result,
+                    isExtractingForCover = false
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(isExtractingForCover = false)
+            }
         }
     }
 
     fun setSelectedCover(context: Context, selectedImageFile: File) {
         val comic = _uiState.value.selectedComicForCoverPicker ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val comicId = comic._id
-            val newCoverName = selectedImageFile.name
+            try {
+                val comicId = comic._id
+                val newCoverName = selectedImageFile.name
 
-            // Re-extract/generate thumbnail with the newly selected cover
-            val file = File(comic.filePath)
-            ComicExtractor.extractComic(
-                context = context,
-                comicId = comicId,
-                inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
-                targetCoverFilename = newCoverName,
-                sourceFile = file
-            )
+                // Re-extract/generate thumbnail with the newly selected cover
+                val file = File(comic.filePath)
+                ComicExtractor.extractComic(
+                    context = context,
+                    comicId = comicId,
+                    inputStreamProvider = { if (file.exists()) FileInputStream(file) else null },
+                    targetCoverFilename = newCoverName,
+                    sourceFile = file
+                )
 
-            repository.updateCoverFilename(comicId, newCoverName)
+                repository.updateCoverFilename(comicId, newCoverName)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             _uiState.value = _uiState.value.copy(
                 selectedComicForCoverPicker = null,
@@ -270,13 +343,22 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         storyArc: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateComicMetadata(comicId, title, issueNumber, series, authors, publisher, storyArc)
+            try {
+                repository.updateComicMetadata(comicId, title, issueNumber, series, authors, publisher, storyArc)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun deleteComic(comicId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteComic(comicId)
+            try {
+                repository.deleteComic(comicId)
+                ComicExtractor.deleteComicFiles(appContext, comicId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

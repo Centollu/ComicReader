@@ -18,7 +18,8 @@ import java.io.File
 import java.io.FileInputStream
 
 data class FoldersUiState(
-    val isOpeningComic: Boolean = false
+    val isOpeningComic: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class FoldersViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,10 +31,17 @@ class FoldersViewModel(application: Application) : AndroidViewModel(application)
 
     fun openComic(context: Context, file: File, onOpened: (ComicDocument) -> Unit) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isOpeningComic = true)
-            val comic = withContext(Dispatchers.IO) { ensureComicInLibrary(context, file) }
+            _uiState.value = _uiState.value.copy(isOpeningComic = true, errorMessage = null)
+            try {
+                val comic = withContext(Dispatchers.IO) { ensureComicInLibrary(context, file) }
+                onOpened(comic)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "No se pudo abrir el cómic: ${e.message}"
+                )
+            }
             _uiState.value = _uiState.value.copy(isOpeningComic = false)
-            onOpened(comic)
         }
     }
 
