@@ -29,7 +29,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
@@ -205,8 +208,16 @@ fun HistoryCard(
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
+                val displayTitle = buildAnnotatedString {
+                    append(history.title)
+                    history.issueNumber?.let { issueNumber ->
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                            append(" Nº $issueNumber")
+                        }
+                    }
+                }
                 Text(
-                    text = history.title,
+                    text = displayTitle,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     maxLines = 2

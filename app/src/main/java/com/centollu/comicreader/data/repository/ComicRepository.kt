@@ -48,6 +48,7 @@ class ComicRepository(context: Context) {
         comicId: String,
         filePath: String,
         title: String,
+        issueNumber: Int?,
         coverPath: String,
         pageIndex: Int,
         totalPages: Int
@@ -64,6 +65,7 @@ class ComicRepository(context: Context) {
                 this.comicId = comicId
                 this.filePath = filePath
                 this.title = title
+                this.issueNumber = issueNumber
                 this.coverPath = coverPath
                 this.lastPageOpened = pageIndex
                 this.totalPages = totalPages

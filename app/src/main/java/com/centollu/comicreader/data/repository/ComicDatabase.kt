@@ -11,7 +11,7 @@ import com.centollu.comicreader.data.model.ReadingHistoryDocument
 
 @Database(
     entities = [ComicDocument::class, ReadingHistoryDocument::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class ComicDatabase : RoomDatabase() {
@@ -28,6 +28,16 @@ abstract class ComicDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reading_history ADD COLUMN issueNumber INTEGER")
+                db.execSQL(
+                    "UPDATE reading_history SET issueNumber = " +
+                        "(SELECT c.issueNumber FROM comics c WHERE c._id = reading_history.comicId)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): ComicDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -35,7 +45,7 @@ abstract class ComicDatabase : RoomDatabase() {
                     ComicDatabase::class.java,
                     "comic_library.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

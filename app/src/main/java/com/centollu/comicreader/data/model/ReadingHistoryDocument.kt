@@ -11,6 +11,7 @@ class ReadingHistoryDocument {
     var comicId: String = ""
     var filePath: String = ""
     var title: String = ""
+    var issueNumber: Int? = null
     var coverPath: String = ""
     var lastPageOpened: Int = 0
     var totalPages: Int = 0

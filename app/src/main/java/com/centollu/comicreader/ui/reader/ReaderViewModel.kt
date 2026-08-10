@@ -131,6 +131,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     comicId = comicId,
                     filePath = comic.filePath,
                     title = comic.title,
+                    issueNumber = comic.issueNumber,
                     coverPath = comic.coverFilename,
                     pageIndex = pageIndex,
                     totalPages = total
