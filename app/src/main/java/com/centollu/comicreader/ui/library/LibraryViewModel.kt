@@ -25,6 +25,7 @@ import java.io.IOException
 data class LibraryUiState(
     val comics: List<ComicDocument> = emptyList(),
     val searchQuery: String = "",
+    val recentSearches: List<String> = emptyList(),
     val filterType: String = "ALL", // ALL, TITLE, AUTHOR, SERIES, PUBLISHER, ARC
     val sortType: String = "NAME", // NAME (filename asc), PATH (ruta asc), DATE (added desc)
     val isLoading: Boolean = false,
@@ -47,6 +48,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
+        _uiState.value = _uiState.value.copy(recentSearches = AppPrefs.getRecentSearches(appContext))
         loadComics()
     }
 
@@ -68,6 +70,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateSortType(sortType: String) {
         _uiState.value = _uiState.value.copy(sortType = sortType)
+    }
+
+    fun saveRecentSearch(query: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(
+                recentSearches = AppPrefs.addRecentSearch(appContext, query)
+            )
+        }
+    }
+
+    fun applyRecentSearch(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        saveRecentSearch(query)
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch(Dispatchers.IO) {
+            AppPrefs.clearRecentSearches(appContext)
+            _uiState.value = _uiState.value.copy(recentSearches = emptyList())
+        }
     }
 
     fun getFilteredComics(): List<ComicDocument> {

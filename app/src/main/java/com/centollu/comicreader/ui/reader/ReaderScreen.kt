@@ -213,7 +213,10 @@ fun ReaderScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = uiState.comic?.title ?: "",
+                            text = buildString {
+                                append(uiState.comic?.title ?: "")
+                                uiState.comic?.issueNumber?.let { append(" #$it") }
+                            },
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
