@@ -108,6 +108,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     isLoading = false,
                     errorMessage = "Error al descomprimir el cómic: ${e.message}"
                 )
+            } catch (e: OutOfMemoryError) {
+                // Red de seguridad: si una página PPMd consume demasiada memoria (p. ej. CBR con
+                // compresión PPMd de 256 MB), mostramos un mensaje en lugar de cerrar la app.
+                e.printStackTrace()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Memoria insuficiente al extraer las páginas. Cierra otras aplicaciones y vuelve a intentarlo."
+                )
             }
         }
     }

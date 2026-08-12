@@ -39,3 +39,6 @@ captures/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Archivos de muestra para pruebas
+samples/

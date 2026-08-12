@@ -594,6 +594,11 @@ object ComicExtractor {
                                 }
                                 onPageExtracted?.invoke(outputFile)
                                 extractedCount++
+                            } catch (e: OutOfMemoryError) {
+                                // Las páginas PPMd pueden requerir cientos de MB de heap (p. ej. 227 MB).
+                                // Si no caben, se omite esa página pero la extracción del resto continúa
+                                // en lugar de tumbar la aplicación.
+                                e.printStackTrace()
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
@@ -618,6 +623,9 @@ object ComicExtractor {
                             }
                             onPageExtracted?.invoke(outputFile)
                             extractedCount++
+                        } catch (e: OutOfMemoryError) {
+                            // Ver extractRar: las páginas PPMd pueden necesitar cientos de MB; se omite la página.
+                            e.printStackTrace()
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
