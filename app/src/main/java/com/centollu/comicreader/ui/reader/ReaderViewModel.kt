@@ -19,6 +19,7 @@ import java.io.FileInputStream
 
 data class ReaderUiState(
     val comic: ComicDocument? = null,
+    val nextComic: ComicDocument? = null,
     val pageFiles: List<File> = emptyList(),
     val currentPageIndex: Int = 0,
     val isLoading: Boolean = true,
@@ -51,6 +52,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             _uiState.value = _uiState.value.copy(comic = comic)
+
+            // Siguiente cómic ordenado por ruta (mismo criterio que el orden PATH de la biblioteca)
+            val allComics = repository.getAllComics().sortedBy { it.filePath.lowercase() }
+            val currentIndex = allComics.indexOfFirst { it._id == comicId }
+            val nextComic =
+                if (currentIndex in allComics.indices && currentIndex + 1 < allComics.size) {
+                    allComics[currentIndex + 1]
+                } else {
+                    null
+                }
+            _uiState.value = _uiState.value.copy(comic = comic, nextComic = nextComic)
 
             // Actualiza la UI a medida que cada página se extrae en la caché,
             // permitiendo leer mientras la extracción continúa en segundo plano.

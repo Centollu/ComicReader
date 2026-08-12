@@ -13,9 +13,11 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +45,8 @@ fun ReaderScreen(
     viewModel: ReaderViewModel,
     comicId: String,
     initialPageIndex: Int = 0,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onNextComic: (String) -> Unit
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -149,6 +152,27 @@ fun ReaderScreen(
                     },
                     scope = scope
                 )
+            }
+
+            // Botón "siguiente" al llegar a la última página: abre el siguiente cómic ordenado por ruta
+            if (!uiState.isLoading && uiState.nextComic != null &&
+                pagerState.currentPage == pagerState.pageCount - 1
+            ) {
+                Surface(
+                    onClick = { uiState.nextComic?.let { onNextComic(it._id) } },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 16.dp),
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Siguiente",
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             }
 
             // Indicador de extracción en curso

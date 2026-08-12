@@ -136,7 +136,11 @@ fun MainAppContent() {
             viewModel = readerViewModel,
             comicId = activeReadingComicId!!,
             initialPageIndex = activeReadingInitialPage,
-            onBackClick = { activeReadingComicId = null }
+            onBackClick = { activeReadingComicId = null },
+            onNextComic = { nextId ->
+                activeReadingInitialPage = 0
+                activeReadingComicId = nextId
+            }
         )
     } else {
         Scaffold(
