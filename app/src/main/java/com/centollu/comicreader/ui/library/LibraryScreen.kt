@@ -102,7 +102,7 @@ fun LibraryScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    filePickerLauncher.launch(arrayOf("application/x-cbz", "application/x-cbr", "application/zip", "application/x-rar-compressed", "*/*"))
+                    filePickerLauncher.launch(arrayOf("application/x-cbz", "application/x-cbr", "application/pdf", "application/zip", "application/x-rar-compressed", "*/*"))
                 },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {

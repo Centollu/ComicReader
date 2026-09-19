@@ -225,7 +225,7 @@ fun SettingsScreen() {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Versión: $versionName", fontSize = 12.sp)
                     Text("Motor BD: MongoDB Realm (Local)", fontSize = 12.sp)
-                    Text("Formatos soportados: .cbz (ZIP) y .cbr (RAR)", fontSize = 12.sp)
+                    Text("Formatos soportados: .cbz (ZIP), .cbr (RAR) y .pdf", fontSize = 12.sp)
                 }
             }
         }

@@ -58,7 +58,7 @@ object NfsManager {
         if (!directory.exists() || !directory.isDirectory) return@withContext emptyList()
 
         directory.walkTopDown()
-            .filter { it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr") }
+            .filter { it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr" || it.extension.lowercase() == "pdf") }
             .toList()
     }
 }

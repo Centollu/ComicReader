@@ -293,7 +293,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         val addedPaths = mutableSetOf<String>()
         val files = try {
             folder.walkTopDown().filter {
-                it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr")
+                it.isFile && (it.extension.lowercase() == "cbz" || it.extension.lowercase() == "cbr" || it.extension.lowercase() == "pdf")
             }.toList()
         } catch (e: Exception) {
             e.printStackTrace()

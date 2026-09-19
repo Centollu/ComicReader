@@ -3,6 +3,9 @@ package com.centollu.comicreader.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import androidx.core.content.edit
 import com.github.junrar.Archive
 import com.github.junrar.rarfile.FileHeader
@@ -45,7 +48,9 @@ object ComicExtractor {
 
     private val SUPPORTED_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
 
-    enum class ArchiveType { ZIP, RAR, UNKNOWN }
+    private const val PDF_RENDER_MAX_PX = 2048
+
+    enum class ArchiveType { ZIP, RAR, PDF, UNKNOWN }
 
     /**
      * Detecta el tipo de archivo leyendo los magic bytes en lugar de confiar en la extensión.
@@ -74,6 +79,7 @@ object ComicExtractor {
         return when {
             signature.startsWith("504B") -> ArchiveType.ZIP   // "PK"
             signature.startsWith("526172") -> ArchiveType.RAR  // "Rar!"
+            signature.startsWith("25504446") -> ArchiveType.PDF  // "%PDF"
             else -> ArchiveType.UNKNOWN
         }
     }
@@ -271,6 +277,21 @@ object ComicExtractor {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        } else if (archiveType == ArchiveType.PDF) {
+            try {
+                val localFile = getPdfLocalFile(context, comicId, sourceFile, inputStreamProvider)
+                if (localFile != null) {
+                    val needTempCleanup = sourceFile == null || !sourceFile.exists()
+                    val total = renderPdfCover(localFile, tempCoverFile)
+                    pageCount = total.coerceAtLeast(0)
+                    if (pageCount > 0) {
+                        foundCoverName = pdfPageFileName(0)
+                    }
+                    if (needTempCleanup) localFile.delete()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         // Generar miniatura recortada en `filesDir/covers/`
@@ -296,6 +317,7 @@ object ComicExtractor {
             when (archiveType) {
                 ArchiveType.ZIP -> readZipComicInfo(sourceFile, inputStreamProvider)
                 ArchiveType.RAR -> readRarComicInfo(sourceFile, inputStreamProvider)
+                ArchiveType.PDF -> null
                 ArchiveType.UNKNOWN -> null
             }
         } catch (e: Exception) {
@@ -420,6 +442,7 @@ object ComicExtractor {
             when (archiveType) {
                 ArchiveType.ZIP -> extractZip(inputStreamProvider, cacheBaseDir, sourceFile, maxPages, onPageExtracted)
                 ArchiveType.RAR -> extractRar(inputStreamProvider, cacheBaseDir, sourceFile, maxPages, onPageExtracted)
+                ArchiveType.PDF -> extractPdf(context, comicId, inputStreamProvider, cacheBaseDir, sourceFile, maxPages, onPageExtracted)
                 ArchiveType.UNKNOWN -> { /* no se pudo identificar el formato */ }
             }
 
@@ -639,6 +662,120 @@ object ComicExtractor {
         }
     }
 
+    private fun pdfPageFileName(index: Int): String =
+        "page_${(index + 1).toString().padStart(4, '0')}.jpg"
+
+    /**
+     * Devuelve un fichero PDF local y legible: si el origen es un fichero local se usa tal cual;
+     * en caso contrario (NFS/HTTP) se descarga a un temporal en `cacheDir`.
+     */
+    private fun getPdfLocalFile(
+        context: Context,
+        comicId: String,
+        sourceFile: File?,
+        inputStreamProvider: () -> InputStream?
+    ): File? {
+        if (sourceFile != null && sourceFile.exists()) return sourceFile
+        return try {
+            val tempFile = File(context.cacheDir, "temp_pdf_$comicId.tmp")
+            val stream = inputStreamProvider() ?: return null
+            FileOutputStream(tempFile).use { out ->
+                stream.use { it.copyTo(out) }
+            }
+            if (tempFile.length() > 0) tempFile else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun createRenderedBitmap(page: PdfRenderer.Page): Bitmap? {
+        return try {
+            val baseWidth = page.width
+            val baseHeight = page.height
+            if (baseWidth <= 0 || baseHeight <= 0) return null
+            val scale = PDF_RENDER_MAX_PX.toFloat() / maxOf(baseWidth, baseHeight)
+            val width = (baseWidth * scale).toInt().coerceAtLeast(1)
+            val height = (baseHeight * scale).toInt().coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val matrix = Matrix()
+            matrix.postScale(width.toFloat() / baseWidth, height.toFloat() / baseHeight)
+            page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bitmap
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /** Renderiza solo la primera página del PDF a [coverOutput] (JPEG). Devuelve el total de páginas. */
+    private fun renderPdfCover(pdfFile: File, coverOutput: File): Int {
+        return try {
+            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    if (renderer.pageCount > 0) {
+                        renderer.openPage(0).use { page ->
+                            val bitmap = createRenderedBitmap(page)
+                            if (bitmap != null) {
+                                FileOutputStream(coverOutput).use { out ->
+                                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                                }
+                                bitmap.recycle()
+                            }
+                        }
+                    }
+                    renderer.pageCount
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0
+        }
+    }
+
+    private fun extractPdf(
+        context: Context,
+        comicId: String,
+        inputStreamProvider: () -> InputStream?,
+        outputDir: File,
+        sourceFile: File? = null,
+        maxPages: Int? = null,
+        onPageExtracted: ((File) -> Unit)? = null
+    ) {
+        try {
+            val localFile = getPdfLocalFile(context, comicId, sourceFile, inputStreamProvider) ?: return
+            val needTempCleanup = sourceFile == null || !sourceFile.exists()
+            ParcelFileDescriptor.open(localFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    val limit = maxPages?.coerceIn(1, renderer.pageCount) ?: renderer.pageCount
+                    for (i in 0 until limit) {
+                        try {
+                            renderer.openPage(i).use { page ->
+                                val bitmap = createRenderedBitmap(page)
+                                if (bitmap != null) {
+                                    val outputFile = File(outputDir, pdfPageFileName(i))
+                                    FileOutputStream(outputFile).use { out ->
+                                        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                                    }
+                                    bitmap.recycle()
+                                    onPageExtracted?.invoke(outputFile)
+                                }
+                            }
+                        } catch (e: OutOfMemoryError) {
+                            // Ver extractRar: una página demasiado pesada no debe tumbar la app.
+                            e.printStackTrace()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+            if (needTempCleanup) localFile.delete()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     /**
      * Dado el listado de imágenes en orden de archivo, devuelve los índices que deben
      * conservarse: las primeras [maxPages] páginas en orden natural. Si [maxPages] es null,
@@ -728,6 +865,9 @@ object ComicExtractor {
 
         val tempCover = File(context.cacheDir, "temp_cover_$comicId.tmp")
         if (tempCover.exists()) tempCover.delete()
+
+        val tempPdf = File(context.cacheDir, "temp_pdf_$comicId.tmp")
+        if (tempPdf.exists()) tempPdf.delete()
     }
 }
 

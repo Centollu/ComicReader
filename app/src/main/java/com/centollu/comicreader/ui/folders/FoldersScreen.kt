@@ -28,7 +28,7 @@ import com.centollu.comicreader.util.StorageVolumeInfo
 import com.centollu.comicreader.util.getStorageVolumes
 import java.io.File
 
-private val COMIC_EXTENSIONS = setOf("cbz", "cbr")
+private val COMIC_EXTENSIONS = setOf("cbz", "cbr", "pdf")
 
 private fun isComicFile(file: File): Boolean =
     file.isFile && file.extension.lowercase() in COMIC_EXTENSIONS
